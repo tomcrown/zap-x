@@ -1,0 +1,90 @@
+import Database from 'better-sqlite3';
+import path from 'path';
+import fs from 'fs';
+import { config } from '../config/index.js';
+
+let _db: Database.Database | null = null;
+
+export function getDb(): Database.Database {
+  if (_db) return _db;
+
+  const dbPath = path.resolve(config.db.path);
+  const dir = path.dirname(dbPath);
+
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  _db = new Database(dbPath);
+  _db.pragma('journal_mode = WAL');
+  _db.pragma('foreign_keys = ON');
+  initSchema(_db);
+  return _db;
+}
+
+function initSchema(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      username       TEXT UNIQUE,
+      email          TEXT UNIQUE,
+      wallet_address TEXT NOT NULL UNIQUE,
+      privy_user_id  TEXT UNIQUE,
+      created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS transactions (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      sender_wallet        TEXT NOT NULL,
+      recipient_wallet     TEXT,
+      recipient_identifier TEXT NOT NULL,
+      amount               TEXT NOT NULL,
+      token                TEXT NOT NULL,
+      tx_hash              TEXT,
+      status               TEXT NOT NULL DEFAULT 'pending',
+      note                 TEXT,
+      claim_link_id        INTEGER REFERENCES claim_links(id),
+      created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS claim_links (
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      token               TEXT NOT NULL UNIQUE,
+      sender_wallet       TEXT NOT NULL,
+      recipient_email     TEXT,
+      recipient_username  TEXT,
+      amount              TEXT NOT NULL,
+      token_type          TEXT NOT NULL,
+      escrow_tx_hash      TEXT,
+      claim_tx_hash       TEXT,
+      status              TEXT NOT NULL DEFAULT 'pending',
+      expires_at          TEXT NOT NULL,
+      created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS staking_positions (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_wallet          TEXT NOT NULL,
+      pool_address         TEXT NOT NULL,
+      pool_name            TEXT NOT NULL DEFAULT 'STRK Staking Pool',
+      token                TEXT NOT NULL,
+      staked_amount        TEXT NOT NULL,
+      entry_tx_hash        TEXT,
+      exit_intent_tx_hash  TEXT,
+      status               TEXT NOT NULL DEFAULT 'active',
+      created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_transactions_sender ON transactions(sender_wallet);
+    CREATE INDEX IF NOT EXISTS idx_transactions_recipient ON transactions(recipient_wallet);
+    CREATE INDEX IF NOT EXISTS idx_claim_links_token ON claim_links(token);
+    CREATE INDEX IF NOT EXISTS idx_claim_links_email ON claim_links(recipient_email);
+    CREATE INDEX IF NOT EXISTS idx_staking_wallet ON staking_positions(user_wallet);
+    CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+  `);
+}
+
+export default getDb;
