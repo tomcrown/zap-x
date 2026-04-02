@@ -7,6 +7,7 @@ import {
   redeemClaimLink,
   cancelClaimLink,
 } from '../services/claimService.js';
+import getDb from '../db/database.js';
 
 const router = Router();
 
@@ -30,8 +31,14 @@ router.post('/:token/redeem', requireAuth as any, validate(redeemClaimSchema), a
     const { token } = req.params;
     const { recipientWallet } = req.body;
 
-    // Ensure the wallet matches the authenticated user
-    if (recipientWallet !== req.user!.walletAddress) {
+    // Verify the wallet belongs to the authenticated Privy user (look up by privy_user_id)
+    const db = getDb();
+    const dbUser = db
+      .prepare('SELECT wallet_address FROM users WHERE privy_user_id = ?')
+      .get(req.user!.privyUserId) as { wallet_address: string } | undefined;
+
+    const authorizedWallet = dbUser?.wallet_address ?? req.user!.walletAddress;
+    if (!authorizedWallet || recipientWallet !== authorizedWallet) {
       res.status(403).json({ error: 'Recipient wallet does not match authenticated user.' });
       return;
     }

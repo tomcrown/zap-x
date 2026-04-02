@@ -7,6 +7,7 @@ import { errorHandler, notFound } from './middleware/errorHandler.js';
 
 // Routes
 import userRouter from './routes/user.js';
+import walletRouter from './routes/wallet.js';
 import transferRouter from './routes/transfer.js';
 import claimRouter from './routes/claim.js';
 import stakingRouter from './routes/staking.js';
@@ -53,6 +54,7 @@ app.use('/api/ai', aiLimiter);
 app.get('/health', (_req, res) => res.json({ status: 'ok', version: '1.0.0' }));
 
 app.use('/api/users', userRouter);
+app.use('/api/wallet', walletRouter);
 app.use('/api/transfer', transferRouter);
 app.use('/api/claim', claimRouter);
 app.use('/api/staking', stakingRouter);

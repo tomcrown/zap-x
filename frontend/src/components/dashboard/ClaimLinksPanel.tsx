@@ -5,6 +5,7 @@ import { ClaimLink } from '../../types/index.js';
 import { useToast } from '../../contexts/ToastContext.js';
 import { Button } from '../common/Button.js';
 import { LoadingSpinner } from '../common/LoadingSpinner.js';
+import { useWallet } from '../../contexts/WalletContext.js';
 
 function ClaimRow({ claim, onCancel }: { claim: ClaimLink; onCancel: (token: string) => void }) {
   const isExpired = new Date(claim.expiresAt) < new Date();
@@ -69,11 +70,13 @@ function ClaimRow({ claim, onCancel }: { claim: ClaimLink; onCancel: (token: str
 export function ClaimLinksPanel() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { isAuthenticated, walletAddress } = useWallet();
 
   const { data, isLoading } = useQuery({
     queryKey: ['claim-links'],
     queryFn: claimApi.list,
     refetchInterval: 30_000,
+    enabled: isAuthenticated && !!walletAddress,
   });
 
   const cancelMutation = useMutation({

@@ -6,8 +6,9 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { PrivyClient } from '@privy-io/server-auth';
 import { config } from '../config/index.js';
+import { getPrivyServer } from '../services/walletService.js';
+import getDb from '../db/database.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -17,11 +18,9 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-let _privy: PrivyClient | null = null;
-function getPrivy(): PrivyClient | null {
+function getPrivy() {
   if (!config.privy.appId || !config.privy.appSecret) return null;
-  if (!_privy) _privy = new PrivyClient(config.privy.appId, config.privy.appSecret);
-  return _privy;
+  return getPrivyServer();
 }
 
 export async function requireAuth(
@@ -51,25 +50,24 @@ export async function requireAuth(
   try {
     const claims = await privy.verifyAuthToken(token);
 
-    // Extract Starknet wallet address from linked accounts
     const user = await privy.getUser(claims.userId);
-    const starknetWallet = (user.linkedAccounts as any[]).find(
-      (acc: any) => acc.type === 'wallet' && acc.chainType === 'starknet'
-    );
 
-    if (!starknetWallet?.address) {
-      res.status(403).json({ error: 'No Starknet wallet found in this account.' });
-      return;
-    }
+    // Our wallets are server-owned, so they don't appear in Privy's linkedAccounts.
+    // Look up the wallet address from our DB using the Privy user ID.
+    const db = getDb();
+    const dbUser = db
+      .prepare('SELECT wallet_address FROM users WHERE privy_user_id = ?')
+      .get(claims.userId) as { wallet_address: string } | undefined;
 
     req.user = {
       privyUserId: claims.userId,
-      walletAddress: starknetWallet.address as string,
+      walletAddress: dbUser?.wallet_address ?? '',
       email: (user.linkedAccounts as any[]).find((a: any) => a.type === 'email')?.address,
     };
 
     next();
-  } catch {
+  } catch (err: any) {
+    console.error('[Auth] verifyAuthToken failed:', err?.message ?? err);
     res.status(401).json({ error: 'Invalid or expired auth token.' });
   }
 }

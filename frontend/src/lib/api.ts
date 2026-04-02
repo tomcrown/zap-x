@@ -41,6 +41,22 @@ apiClient.interceptors.response.use(
   }
 );
 
+// ─── Wallet ────────────────────────────────────────────────────────────────────
+
+export const walletApi = {
+  /** Get or create the user's Privy-managed Starknet wallet. Returns { walletId, publicKey, address }. */
+  ensureStarknetWallet: () =>
+    apiClient
+      .post<{ walletId: string; publicKey: string; address: string }>('/wallet/starknet')
+      .then((r) => r.data),
+
+  /** Sign endpoint URL — must be an absolute URL for Starkzap's PrivySigner validation. */
+  get signUrl() {
+    const backendUrl = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:3001';
+    return `${backendUrl}/api/wallet/sign`;
+  },
+};
+
 // ─── User ──────────────────────────────────────────────────────────────────────
 
 export const userApi = {

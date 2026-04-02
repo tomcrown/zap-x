@@ -130,15 +130,16 @@ export function SendForm({ prefill, onSuccess }: Props) {
           </a>
         )}
         {claimLink && (
-          <div className="p-3 bg-surface rounded-xl border border-surface-border text-left mb-4">
-            <p className="text-xs text-slate-500 mb-1">Claim link sent to recipient:</p>
-            <p className="text-xs font-mono text-brand-400 break-all">{claimLink}</p>
+          <div className="p-4 bg-surface rounded-xl border border-brand-500/30 text-left mb-4">
+            <p className="text-xs font-semibold text-brand-400 mb-2">📎 Share this claim link with the recipient</p>
+            <p className="text-xs font-mono text-slate-300 break-all mb-3">{claimLink}</p>
             <button
               onClick={() => navigator.clipboard.writeText(claimLink)}
-              className="text-xs text-slate-400 hover:text-white mt-1"
+              className="w-full py-2 rounded-lg bg-brand-600/20 border border-brand-500/30 text-xs text-brand-400 hover:bg-brand-600/30 transition-colors font-semibold"
             >
-              Copy link
+              Copy claim link
             </button>
+            <p className="text-xs text-slate-500 mt-2">They can claim their funds without a wallet — Privy handles it.</p>
           </div>
         )}
         <Button

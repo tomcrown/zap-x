@@ -85,6 +85,40 @@ function initSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
   `);
+
+  // Migrations: add columns that may not exist in older DBs
+  for (const sql of [
+    `ALTER TABLE users ADD COLUMN privy_wallet_id TEXT`,
+    `ALTER TABLE users ADD COLUMN privy_wallet_public_key TEXT`,
+  ]) {
+    try { db.exec(sql); } catch { /* column already exists */ }
+  }
+
+  // Migrate wallet_address from NOT NULL to nullable so we can insert a user row
+  // before the wallet address is known (privy_user_id is now the primary lookup key).
+  // SQLite doesn't support ALTER COLUMN, so we recreate the table if needed.
+  const col = (db.prepare(`PRAGMA table_info(users)`).all() as any[])
+    .find((c) => c.name === 'wallet_address');
+  if (col?.notnull === 1) {
+    db.exec(`
+      CREATE TABLE users_new (
+        id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+        username                TEXT UNIQUE,
+        email                   TEXT UNIQUE,
+        wallet_address          TEXT UNIQUE,
+        privy_user_id           TEXT UNIQUE,
+        privy_wallet_id         TEXT,
+        privy_wallet_public_key TEXT,
+        created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at              TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO users_new SELECT id, username, email, wallet_address, privy_user_id, privy_wallet_id, privy_wallet_public_key, created_at, updated_at FROM users;
+      DROP TABLE users;
+      ALTER TABLE users_new RENAME TO users;
+      CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    `);
+  }
 }
 
 export default getDb;

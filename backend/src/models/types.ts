@@ -14,6 +14,8 @@ export interface DbUser {
   email: string | null;
   wallet_address: string;
   privy_user_id: string | null;
+  privy_wallet_id: string | null;
+  privy_wallet_public_key: string | null;
   created_at: string;
   updated_at: string;
 }

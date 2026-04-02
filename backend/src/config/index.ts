@@ -24,6 +24,8 @@ export const config = {
   privy: {
     appId: optional('PRIVY_APP_ID', ''),
     appSecret: optional('PRIVY_APP_SECRET', ''),
+    walletPublicKey: optional('PRIVY_WALLET_PUBLIC_KEY', ''),
+    walletPrivateKey: optional('PRIVY_WALLET_PRIVATE_KEY', ''),
   },
 
   starknet: {

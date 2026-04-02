@@ -3,12 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { stakingApi } from '../../lib/api.js';
 import { Link } from 'react-router-dom';
 import { LoadingSpinner } from '../common/LoadingSpinner.js';
+import { useWallet } from '../../contexts/WalletContext.js';
 
 export function StakingPanel() {
+  const { isAuthenticated, walletAddress } = useWallet();
   const { data, isLoading } = useQuery({
     queryKey: ['staking-stats'],
     queryFn: stakingApi.stats,
     refetchInterval: 60_000,
+    enabled: isAuthenticated && !!walletAddress,
   });
 
   if (isLoading) return <div className="card flex justify-center py-8"><LoadingSpinner /></div>;

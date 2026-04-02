@@ -8,9 +8,14 @@
  * SDK Docs: https://docs.starknet.io/build/starkzap/
  */
 
-import { StarkZap, Amount, TxBuilder } from 'starkzap';
-import { config as sdkConfig } from '../config.js';
-import type { TokenSymbol } from '../types/index.js';
+import { StarkZap, Amount, ChainId, getPresets } from "starkzap";
+import type { TokenSymbol } from "../types/index.js";
+
+// Token presets keyed by network — resolved once at module load
+const _chainId = (import.meta.env.VITE_STARKNET_NETWORK ?? "sepolia") === "mainnet"
+  ? ChainId.MAINNET
+  : ChainId.SEPOLIA;
+const _tokens = getPresets(_chainId) as Record<string, unknown>;
 
 // ─── Token Address Map (used for token object lookup in SDK) ─────────────────
 
@@ -18,40 +23,87 @@ import type { TokenSymbol } from '../types/index.js';
 // and fall back to address-based lookup if needed.
 
 let _sdk: StarkZap | null = null;
+let _wallet: any = null;
 
-/**
- * Get (or create) the StarkZap SDK instance.
- * Pass the Privy wallet object (from usePrivy()) as the signer.
- */
-export function getStarkZap(privyWallet?: unknown): StarkZap {
+/** Get (or create) the StarkZap SDK instance. */
+export function getStarkZap(): StarkZap {
   if (_sdk) return _sdk;
 
-  // PrivySigner wraps the Privy wallet for Starknet signing
-  // See: https://docs.starknet.io/build/starkzap/signers#privy
-  const signerConfig = privyWallet
-    ? { signer: { type: 'privy' as const, wallet: privyWallet } }
-    : {};
-
   _sdk = new StarkZap({
-    network: (import.meta.env.VITE_STARKNET_NETWORK ?? 'sepolia') as 'mainnet' | 'sepolia',
+    network: (import.meta.env.VITE_STARKNET_NETWORK ?? "sepolia") as
+      | "mainnet"
+      | "sepolia",
     rpcUrl: import.meta.env.VITE_STARKNET_RPC_URL,
     // AVNU Paymaster for gasless transactions
-    paymaster: import.meta.env.VITE_AVNU_API_KEY
-      ? {
-          type: 'avnu',
-          url: import.meta.env.VITE_AVNU_PAYMASTER_URL ?? 'https://sepolia.paymaster.avnu.fi',
-          apiKey: import.meta.env.VITE_AVNU_API_KEY,
-        }
-      : undefined,
-    ...signerConfig,
+    paymaster:
+      import.meta.env.VITE_AVNU_PAYMASTER_URL &&
+      import.meta.env.VITE_AVNU_API_KEY
+        ? {
+            nodeUrl: import.meta.env.VITE_AVNU_PAYMASTER_URL,
+            headers: {
+              "x-paymaster-api-key": import.meta.env.VITE_AVNU_API_KEY,
+            },
+          }
+        : undefined,
   });
 
   return _sdk;
 }
 
+/**
+ * Connect the user's Privy-managed Starknet wallet via the Starkzap Privy strategy.
+ *
+ * Flow:
+ *  1. Calls backend POST /api/wallet/starknet to get/create the wallet (walletId, publicKey, address).
+ *  2. Uses sdk.onboard({ strategy: 'privy' }) — Starkzap derives the Starknet address from the publicKey.
+ *  3. When signing is needed, Starkzap POSTs { walletId, hash } to /api/wallet/sign on our backend,
+ *     which proxies to Privy's rawSign. The user never touches a private key.
+ *
+ * @param getAccessToken - Privy's getAccessToken() so the backend can authenticate the request.
+ */
+export async function connectPrivyWallet(
+  getAccessToken: () => Promise<string | null>,
+) {
+  const sdk = getStarkZap();
+
+  const result = await sdk.onboard({
+    strategy: "privy" as any,
+    accountPreset: "argentXV050" as any,
+    deploy: "if_needed" as any,
+    // AVNU paymaster sponsors the account deployment — user pays no gas
+    feeMode: "sponsored" as any,
+    privy: {
+      resolve: async () => {
+        const token = await getAccessToken();
+        // Ensure the token is in sessionStorage before the API call,
+        // since the axios interceptor reads from there.
+        if (token) sessionStorage.setItem("privy:token", token);
+        const { walletApi } = await import("./api.js");
+        const walletInfo = await walletApi.ensureStarknetWallet();
+        return {
+          walletId: walletInfo.walletId,
+          publicKey: walletInfo.publicKey,
+          serverUrl: walletApi.signUrl,
+          headers: { Authorization: `Bearer ${token}` },
+        };
+      },
+    },
+  } as any);
+
+  _wallet = result.wallet as any;
+  return _wallet!;
+}
+
+/** Get the currently connected wallet (throws if not connected). */
+export function getConnectedWallet() {
+  if (!_wallet) throw new Error("No Starknet wallet connected.");
+  return _wallet;
+}
+
 /** Reset the SDK singleton (call when user disconnects) */
 export function resetStarkZap(): void {
   _sdk = null;
+  _wallet = null;
 }
 
 // ─── Token Helper ─────────────────────────────────────────────────────────────
@@ -60,11 +112,10 @@ export function resetStarkZap(): void {
  * Get the starkzap token object from a symbol string.
  * The SDK exports token constants: STRK, ETH, USDC, USDT, wBTC, etc.
  */
-export async function getToken(symbol: TokenSymbol) {
-  // Dynamic import of token constants from starkzap
-  const tokens = await import('starkzap').then((m) => m);
-  const token = (tokens as Record<string, unknown>)[symbol];
-  if (!token) throw new Error(`Token ${symbol} is not supported by the Starkzap SDK.`);
+export function getToken(symbol: TokenSymbol) {
+  const token = _tokens[symbol];
+  if (!token)
+    throw new Error(`Token ${symbol} is not supported by the Starkzap SDK.`);
   return token;
 }
 
@@ -82,22 +133,25 @@ export interface TransferParams {
  * Returns the transaction hash.
  */
 export async function executeTransfer(params: TransferParams): Promise<string> {
-  const sdk = _sdk;
-  if (!sdk) throw new Error('Starkzap SDK not initialised. Connect wallet first.');
+  const tokenObj = getToken(params.token);
+  const wallet = getConnectedWallet();
 
-  const tokenObj = await getToken(params.token);
-  const wallet = await sdk.getWallet();
+  // Ensure the account is deployed before transacting.
+  // feeMode: "sponsored" deploys via AVNU paymaster if not yet on-chain.
+  await wallet.ensureReady({
+    deploy: "if_needed",
+    feeMode: "sponsored" as any,
+  });
 
   const parsedAmount = Amount.parse(params.amount, tokenObj as any);
 
-  const result = await wallet.transfer(tokenObj as any, {
-    to: params.toAddress,
-    amount: parsedAmount,
-    // Use sponsored (gasless) mode if AVNU paymaster configured
-    ...(params.gasless && { feeMode: { mode: 'default' } }),
-  });
+  const result = await wallet.transfer(
+    tokenObj as any,
+    [{ to: params.toAddress, amount: parsedAmount }],
+    params.gasless ? { feeMode: "sponsored" } : undefined,
+  );
 
-  return result.transaction_hash;
+  return result.hash;
 }
 
 // ─── Batch Transfer (multiple recipients) ────────────────────────────────────
@@ -110,13 +164,10 @@ export interface BatchTransferRecipient {
 export async function executeBatchTransfer(
   recipients: BatchTransferRecipient[],
   token: TokenSymbol,
-  gasless?: boolean
+  gasless?: boolean,
 ): Promise<string> {
-  const sdk = _sdk;
-  if (!sdk) throw new Error('Starkzap SDK not initialised.');
-
-  const tokenObj = await getToken(token);
-  const wallet = await sdk.getWallet();
+  const tokenObj = getToken(token);
+  const wallet = getConnectedWallet();
 
   const amounts = recipients.map((r) => ({
     to: r.to,
@@ -126,10 +177,10 @@ export async function executeBatchTransfer(
   const result = await wallet.transfer(
     tokenObj as any,
     amounts,
-    gasless ? { feeMode: { mode: 'default' } } : undefined
+    gasless ? { feeMode: "sponsored" } : undefined,
   );
 
-  return result.transaction_hash;
+  return result.hash;
 }
 
 // ─── Staking ──────────────────────────────────────────────────────────────────
@@ -143,23 +194,23 @@ export async function executeStake(
   poolAddress: string,
   amount: string,
   token: TokenSymbol,
-  gasless?: boolean
+  gasless?: boolean,
 ): Promise<string> {
-  const sdk = _sdk;
-  if (!sdk) throw new Error('Starkzap SDK not initialised.');
+  const tokenObj = getToken(token);
+  const wallet = getConnectedWallet();
 
-  const tokenObj = await getToken(token);
-  const wallet = await sdk.getWallet();
+  await wallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" as any });
+
   const parsedAmount = Amount.parse(amount, tokenObj as any);
 
   // wallet.stake() auto-detects new vs existing member
   const result = await wallet.stake(
     poolAddress,
     parsedAmount,
-    gasless ? { feeMode: { mode: 'default' } } : undefined
+    gasless ? { feeMode: "sponsored" } : undefined,
   );
 
-  return result.transaction_hash;
+  return result.hash;
 }
 
 /**
@@ -169,17 +220,14 @@ export async function executeStake(
 export async function executeExitIntent(
   poolAddress: string,
   amount: string,
-  token: TokenSymbol
+  token: TokenSymbol,
 ): Promise<string> {
-  const sdk = _sdk;
-  if (!sdk) throw new Error('Starkzap SDK not initialised.');
-
-  const tokenObj = await getToken(token);
-  const wallet = await sdk.getWallet();
+  const tokenObj = getToken(token);
+  const wallet = getConnectedWallet();
   const parsedAmount = Amount.parse(amount, tokenObj as any);
 
   const result = await wallet.exitPoolIntent(poolAddress, parsedAmount);
-  return result.transaction_hash;
+  return result.hash;
 }
 
 /**
@@ -187,35 +235,29 @@ export async function executeExitIntent(
  * Maps to wallet.exitPool(poolAddress).
  */
 export async function executeExit(poolAddress: string): Promise<string> {
-  const sdk = _sdk;
-  if (!sdk) throw new Error('Starkzap SDK not initialised.');
-
-  const wallet = await sdk.getWallet();
+  const wallet = getConnectedWallet();
   const result = await wallet.exitPool(poolAddress);
-  return result.transaction_hash;
+  return result.hash;
 }
 
 // ─── Balance Query ────────────────────────────────────────────────────────────
 
 export async function getBalance(token: TokenSymbol): Promise<string> {
-  const sdk = _sdk;
-  if (!sdk) throw new Error('Starkzap SDK not initialised.');
-
-  const tokenObj = await getToken(token);
-  const wallet = await sdk.getWallet();
+  const tokenObj = getToken(token);
+  const wallet = getConnectedWallet();
 
   const balance = await wallet.balanceOf(tokenObj as any);
   return balance.toUnit(); // human-readable string
 }
 
 export async function getAllBalances(): Promise<Record<TokenSymbol, string>> {
-  const tokens: TokenSymbol[] = ['STRK', 'ETH', 'USDC', 'USDT', 'wBTC'];
+  const tokens: TokenSymbol[] = ["STRK", "ETH", "USDC", "USDT", "wBTC"];
   const results = await Promise.allSettled(tokens.map((t) => getBalance(t)));
 
   const out: Partial<Record<TokenSymbol, string>> = {};
   tokens.forEach((t, i) => {
     const r = results[i];
-    out[t] = r.status === 'fulfilled' ? r.value : '0';
+    out[t] = r.status === "fulfilled" ? r.value : "0";
   });
   return out as Record<TokenSymbol, string>;
 }
@@ -228,31 +270,28 @@ export interface PoolPosition {
   total: string;
 }
 
-export async function getPoolPosition(poolAddress: string): Promise<PoolPosition | null> {
-  const sdk = _sdk;
-  if (!sdk) return null;
-
-  const wallet = await sdk.getWallet();
+export async function getPoolPosition(
+  poolAddress: string,
+): Promise<PoolPosition | null> {
+  if (!_wallet) return null;
+  const wallet = getConnectedWallet();
   const isMember = await wallet.isPoolMember(poolAddress);
   if (!isMember) return null;
 
   const pos = await wallet.getPoolPosition(poolAddress);
   return {
-    staked: pos.staked?.toUnit() ?? '0',
-    rewards: pos.rewards?.toUnit() ?? '0',
-    total: pos.total?.toUnit() ?? '0',
+    staked: pos.staked?.toUnit() ?? "0",
+    rewards: pos.rewards?.toUnit() ?? "0",
+    total: pos.total?.toUnit() ?? "0",
   };
 }
 
 // ─── Claim Staking Rewards ────────────────────────────────────────────────────
 
 export async function claimPoolRewards(poolAddress: string): Promise<string> {
-  const sdk = _sdk;
-  if (!sdk) throw new Error('Starkzap SDK not initialised.');
-
-  const wallet = await sdk.getWallet();
+  const wallet = getConnectedWallet();
   const result = await wallet.claimPoolRewards(poolAddress);
-  return result.transaction_hash;
+  return result.hash;
 }
 
 // ─── Batch Operations (TxBuilder) ────────────────────────────────────────────
@@ -269,27 +308,20 @@ export async function executeSendAndStake(params: {
   poolAddress: string;
   gasless?: boolean;
 }): Promise<string> {
-  const sdk = _sdk;
-  if (!sdk) throw new Error('Starkzap SDK not initialised.');
+  const tokenObj = getToken(params.token);
+  const wallet = getConnectedWallet();
 
-  const tokenObj = await getToken(params.token);
-  const wallet = await sdk.getWallet();
+  const result = await wallet
+    .tx()
+    .transfer(tokenObj as any, {
+      to: params.toAddress,
+      amount: Amount.parse(params.sendAmount, tokenObj as any),
+    })
+    .stake(
+      params.poolAddress,
+      Amount.parse(params.stakeAmount, tokenObj as any),
+    )
+    .send(params.gasless ? { feeMode: "sponsored" } : undefined);
 
-  const tx = new TxBuilder(wallet);
-
-  // Add transfer call
-  tx.addTransfer(tokenObj as any, {
-    to: params.toAddress,
-    amount: Amount.parse(params.sendAmount, tokenObj as any),
-  });
-
-  // Add stake call
-  tx.addStake(params.poolAddress, Amount.parse(params.stakeAmount, tokenObj as any));
-
-  // Execute as single gasless transaction
-  const result = await tx.execute(
-    params.gasless ? { feeMode: { mode: 'default' } } : undefined
-  );
-
-  return result.transaction_hash;
+  return (result as any).hash;
 }

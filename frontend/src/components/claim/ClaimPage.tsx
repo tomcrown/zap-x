@@ -9,7 +9,7 @@ import { LoadingSpinner } from '../common/LoadingSpinner.js';
 
 export function ClaimPageContent() {
   const { token } = useParams<{ token: string }>();
-  const { isAuthenticated, walletAddress, login } = useWallet();
+  const { isAuthenticated, walletAddress, isWalletConnecting, login } = useWallet();
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -156,18 +156,23 @@ export function ClaimPageContent() {
             isAuthenticated ? (
               <div className="space-y-3">
                 <div className="p-3 bg-surface rounded-xl border border-surface-border flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse-slow" />
+                  <div className={`w-2 h-2 rounded-full ${walletAddress ? 'bg-green-400 animate-pulse-slow' : 'bg-yellow-400 animate-pulse'}`} />
                   <span className="font-mono text-xs text-slate-300">
-                    {walletAddress?.slice(0, 12)}…{walletAddress?.slice(-8)}
+                    {walletAddress
+                      ? `${walletAddress.slice(0, 12)}…${walletAddress.slice(-8)}`
+                      : 'Setting up your wallet…'}
                   </span>
                 </div>
                 <Button
                   onClick={handleClaim}
-                  loading={claiming}
+                  loading={claiming || isWalletConnecting}
+                  disabled={!walletAddress}
                   className="w-full"
                   size="lg"
                 >
-                  Claim {claim.amount} {claim.tokenType}
+                  {isWalletConnecting || !walletAddress
+                    ? 'Creating wallet…'
+                    : `Claim ${claim.amount} ${claim.tokenType}`}
                 </Button>
               </div>
             ) : (

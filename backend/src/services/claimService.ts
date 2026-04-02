@@ -16,7 +16,7 @@
  *  the escrow wallet using ESCROW_PRIVATE_KEY.
  */
 
-import { Account, RpcProvider, uint256, Contract, CallData } from 'starknet';
+import { Account, RpcProvider, Signer, uint256, Contract, CallData } from 'starknet';
 import { config } from '../config/index.js';
 import getDb from '../db/database.js';
 import { DbClaimLink, ClaimLinkDetails, ClaimStatus, TokenSymbol } from '../models/types.js';
@@ -107,7 +107,7 @@ export async function redeemClaimLink(
   }
 
   const row = db
-    .prepare('SELECT * FROM claim_links WHERE token = ? FOR UPDATE')
+    .prepare('SELECT * FROM claim_links WHERE token = ?')
     .get(token) as DbClaimLink | undefined;
 
   if (!row) throw new Error('Claim link not found.');
@@ -171,18 +171,16 @@ async function releaseEscrow(
 
   const provider = new RpcProvider({ nodeUrl: config.starknet.rpcUrl });
 
-  // Use Starknet.js Account for the escrow wallet
-  const escrowAccount = new Account(
+  const escrowAccount = new Account({
+    address: config.escrow.walletAddress,
+    signer: new Signer(config.escrow.privateKey),
     provider,
-    config.escrow.walletAddress,
-    config.escrow.privateKey
-  );
+  });
 
   const tokenAddress = TOKEN_ADDRESSES[token][config.starknet.network];
   const rawAmount = parseAmount(amount, token);
   const uint256Amount = uint256.bnToUint256(rawAmount);
 
-  // ERC-20 transfer call
   const call = {
     contractAddress: tokenAddress,
     entrypoint: 'transfer',
@@ -192,22 +190,11 @@ async function releaseEscrow(
     }),
   };
 
-  // Execute with AVNU paymaster if configured (so escrow wallet doesn't need ETH/STRK for gas)
-  let response;
-  if (config.avnu.apiKey) {
-    // Use AVNU paymaster for gasless release
-    response = await escrowAccount.execute([call], {
-      // AVNU paymaster override — the escrow releases gas-free
-      resourceBounds: {
-        l1_gas: { max_amount: '0x0', max_price_per_unit: '0x0' },
-        l2_gas: { max_amount: '0x0', max_price_per_unit: '0x0' },
-      },
-    });
-  } else {
-    response = await escrowAccount.execute([call]);
-  }
+  // starknet.js v9 auto-estimates fees and submits V3 transactions correctly
+  const response = await escrowAccount.execute([call]);
 
-  await provider.waitForTransaction(response.transaction_hash);
+  // Don't wait for full confirmation — return the hash immediately.
+  // The tx is already submitted and signed; confirmation happens async on-chain.
   return response.transaction_hash;
 }
 

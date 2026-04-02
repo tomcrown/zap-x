@@ -1,36 +1,36 @@
 /**
  * WalletContext
  *
- * Manages the global wallet state:
- *  - Privy authentication state
- *  - Starkzap SDK instance
- *  - Cached token balances
- *  - User profile from the backend
+ * Flow:
+ *  1. User logs in with Privy (email/Google) — no crypto needed.
+ *  2. connectPrivyWallet() is called automatically:
+ *       - Backend creates/fetches a Privy-managed Starknet wallet.
+ *       - Starkzap derives wallet.address from the publicKey (ArgentX v0.5.0).
+ *  3. walletAddress is set — shown in navbar, used for transfers/staking.
+ *  4. All signing goes through the backend /api/wallet/sign → Privy rawSign.
  */
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { usePrivy, useWallets } from '@privy-io/react-auth';
-import { getStarkZap, resetStarkZap, getAllBalances } from '../lib/starkzap.js';
-import { userApi } from '../lib/api.js';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { usePrivy } from '@privy-io/react-auth';
+import { connectPrivyWallet, resetStarkZap, getAllBalances } from '../lib/starkzap.js';
+import { userApi, walletApi } from '../lib/api.js';
 import { UserProfile, TokenSymbol } from '../types/index.js';
 
 interface WalletContextValue {
-  // Auth state
   isAuthenticated: boolean;
   isLoading: boolean;
   walletAddress: string | null;
   privyUser: ReturnType<typeof usePrivy>['user'];
 
-  // User profile
+  isWalletConnecting: boolean;
+
   profile: UserProfile | null;
   refreshProfile: () => Promise<void>;
 
-  // Balances
   balances: Record<TokenSymbol, string>;
   refreshBalances: () => Promise<void>;
   balancesLoading: boolean;
 
-  // Actions
   login: () => void;
   logout: () => void;
 }
@@ -39,15 +39,14 @@ const WalletContext = createContext<WalletContextValue | null>(null);
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const { authenticated, user, login, logout: privyLogout, ready, getAccessToken } = usePrivy();
-  const { wallets } = useWallets();
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [balances, setBalances] = useState<Record<TokenSymbol, string>>({} as Record<TokenSymbol, string>);
   const [balancesLoading, setBalancesLoading] = useState(false);
-
-  // Derive Starknet wallet address from Privy
-  const starknetWallet = wallets.find((w: any) => w.chainType === 'starknet');
-  const walletAddress = starknetWallet?.address ?? null;
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [isWalletConnecting, setIsWalletConnecting] = useState(false);
+  const [isSdkReady, setIsSdkReady] = useState(false);
+  const connectingRef = useRef(false);
 
   // Store Privy auth token for API calls
   useEffect(() => {
@@ -60,14 +59,58 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, [authenticated, getAccessToken]);
 
-  // Init Starkzap SDK when wallet is ready
+  // Auto-connect Starknet wallet after Privy login
   useEffect(() => {
-    if (authenticated && starknetWallet) {
-      getStarkZap(starknetWallet);
-    } else {
+    if (!authenticated) {
       resetStarkZap();
+      connectingRef.current = false;
+      setWalletAddress(null);
+      setIsSdkReady(false);
+      return;
     }
-  }, [authenticated, starknetWallet]);
+
+    // Restore cached address immediately so the navbar doesn't flash "No wallet" on refresh
+    const cacheKey = `zap:wallet:${user?.id}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) setWalletAddress(cached);
+
+    // Only run the full SDK onboard once per page load
+    if (connectingRef.current) return;
+    connectingRef.current = true;
+
+    // Only show the connecting spinner if we have no cached address yet
+    if (!cached) setIsWalletConnecting(true);
+
+    // Store token first so the axios interceptor has it before any API calls
+    getAccessToken()
+      .then((token) => { if (token) sessionStorage.setItem('privy:token', token); })
+      .catch(() => {});
+
+    connectPrivyWallet(getAccessToken)
+      .then((wallet) => {
+        const addr = (wallet as any).address;
+        setWalletAddress(addr);
+        setIsSdkReady(true);
+        localStorage.setItem(cacheKey, addr);
+      })
+      .catch(async (err) => {
+        console.error('[WalletContext] Starknet wallet onboard failed:', err?.message ?? err);
+        // Fallback: get address from backend (pre-computed from public key, no gas needed)
+        try {
+          const info = await walletApi.ensureStarknetWallet();
+          if (info?.address) {
+            setWalletAddress(info.address);
+            localStorage.setItem(cacheKey, info.address);
+          }
+        } catch {
+          // backend unreachable — keep cached address if available
+        }
+      })
+      .finally(() => {
+        setIsWalletConnecting(false);
+        connectingRef.current = false;
+      });
+  }, [authenticated, getAccessToken, user?.id]);
 
   // Load profile from backend
   const refreshProfile = useCallback(async () => {
@@ -76,7 +119,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const p = await userApi.me().catch(() => null);
       setProfile(p);
 
-      // Auto-register if not found
       if (!p && walletAddress) {
         const email = (user?.linkedAccounts as any[])?.find((a: any) => a.type === 'email')?.address;
         const registered = await userApi.register({ walletAddress, email }).catch(() => null);
@@ -89,7 +131,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   // Refresh balances from Starkzap SDK
   const refreshBalances = useCallback(async () => {
-    if (!authenticated || !walletAddress) return;
+    if (!authenticated || !walletAddress || !isSdkReady) return;
     setBalancesLoading(true);
     try {
       const bal = await getAllBalances();
@@ -99,24 +141,34 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setBalancesLoading(false);
     }
-  }, [authenticated, walletAddress]);
+  }, [authenticated, walletAddress, isSdkReady]);
 
-  // On auth change, refresh profile + balances
+  // Refresh profile when wallet address known
   useEffect(() => {
     if (authenticated && walletAddress) {
       refreshProfile();
-      refreshBalances();
     } else {
       setProfile(null);
-      setBalances({} as Record<TokenSymbol, string>);
     }
   }, [authenticated, walletAddress]);
 
+  // Refresh balances only when SDK is ready (wallet fully connected)
+  useEffect(() => {
+    if (authenticated && walletAddress && isSdkReady) {
+      refreshBalances();
+    } else if (!authenticated) {
+      setBalances({} as Record<TokenSymbol, string>);
+    }
+  }, [authenticated, walletAddress, isSdkReady]);
+
   const handleLogout = useCallback(async () => {
     resetStarkZap();
+    setWalletAddress(null);
     sessionStorage.removeItem('privy:token');
+    // Do NOT clear the wallet cache — the address is permanent for this user ID.
+    // Next login will restore it instantly from localStorage.
     await privyLogout();
-  }, [privyLogout]);
+  }, [privyLogout, user?.id]);
 
   return (
     <WalletContext.Provider
@@ -125,6 +177,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         isLoading: !ready,
         walletAddress,
         privyUser: user,
+        isWalletConnecting,
         profile,
         refreshProfile,
         balances,
