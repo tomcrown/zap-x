@@ -183,6 +183,72 @@ export async function executeBatchTransfer(
   return result.hash;
 }
 
+// ─── Swap ─────────────────────────────────────────────────────────────────────
+
+export interface SwapQuote {
+  amountIn: string;
+  amountOut: string;
+  priceImpact: string;
+  provider: string;
+}
+
+export async function getSwapQuote(
+  tokenIn: TokenSymbol,
+  tokenOut: TokenSymbol,
+  amountIn: string,
+  slippageBps = 50n,
+): Promise<SwapQuote> {
+  const tokenInObj = getToken(tokenIn);
+  const tokenOutObj = getToken(tokenOut);
+  const wallet = getConnectedWallet();
+
+  const parsedAmount = Amount.parse(amountIn, tokenInObj as any);
+  const quote = await wallet.getQuote({
+    tokenIn: tokenInObj as any,
+    tokenOut: tokenOutObj as any,
+    amountIn: parsedAmount,
+    slippageBps,
+  });
+
+  const outAmount = Amount.fromRaw((quote as any).amountOutBase, tokenOutObj as any);
+
+  return {
+    amountIn,
+    amountOut: outAmount.toUnit(),
+    priceImpact: (quote as any).priceImpactBps != null
+      ? ((Number((quote as any).priceImpactBps) / 100).toFixed(2) + '%')
+      : '< 0.01%',
+    provider: (quote as any).provider ?? 'avnu',
+  };
+}
+
+export async function executeSwap(
+  tokenIn: TokenSymbol,
+  tokenOut: TokenSymbol,
+  amountIn: string,
+  slippageBps = 100n,
+  gasless?: boolean,
+): Promise<string> {
+  const tokenInObj = getToken(tokenIn);
+  const tokenOutObj = getToken(tokenOut);
+  const wallet = getConnectedWallet();
+
+  await wallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" as any });
+
+  const parsedAmount = Amount.parse(amountIn, tokenInObj as any);
+  const result = await wallet.swap(
+    {
+      tokenIn: tokenInObj as any,
+      tokenOut: tokenOutObj as any,
+      amountIn: parsedAmount,
+      slippageBps,
+    },
+    gasless ? { feeMode: "sponsored" as any } : undefined,
+  );
+
+  return (result as any).hash ?? (result as any).transaction_hash;
+}
+
 // ─── Lending (Vesu) ──────────────────────────────────────────────────────────
 
 export interface LendingMarket {

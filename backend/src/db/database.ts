@@ -92,6 +92,19 @@ function initSchema(db: Database.Database): void {
       updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS swaps (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_wallet TEXT NOT NULL,
+      token_in    TEXT NOT NULL,
+      token_out   TEXT NOT NULL,
+      amount_in   TEXT NOT NULL,
+      amount_out  TEXT NOT NULL,
+      tx_hash     TEXT NOT NULL,
+      provider    TEXT NOT NULL DEFAULT 'avnu',
+      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_swaps_wallet ON swaps(user_wallet);
     CREATE INDEX IF NOT EXISTS idx_lending_wallet ON lending_positions(user_wallet);
     CREATE INDEX IF NOT EXISTS idx_staking_wallet ON staking_positions(user_wallet);
     CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);

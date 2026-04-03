@@ -12,6 +12,7 @@ import {
   StakingPool,
   LendingPosition,
   LendingStats,
+  SwapRecord,
   UserProfile,
   AIParseResult,
   TokenSymbol,
@@ -169,6 +170,16 @@ export const lendingApi = {
 
   withdraw: (positionId: number, txHash: string) =>
     apiClient.post('/lending/withdraw', { positionId, txHash }).then((r) => r.data),
+};
+
+// ─── Swap ─────────────────────────────────────────────────────────────────────
+
+export const swapApi = {
+  history: () =>
+    apiClient.get<{ swaps: SwapRecord[] }>('/swap/history').then((r) => r.data.swaps),
+
+  record: (body: { tokenIn: string; tokenOut: string; amountIn: string; amountOut: string; txHash: string; provider: string }) =>
+    apiClient.post<{ swap: SwapRecord }>('/swap/record', body).then((r) => r.data.swap),
 };
 
 // ─── AI ───────────────────────────────────────────────────────────────────────

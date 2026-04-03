@@ -12,6 +12,7 @@ import transferRouter from './routes/transfer.js';
 import claimRouter from './routes/claim.js';
 import stakingRouter from './routes/staking.js';
 import lendingRouter from './routes/lending.js';
+import swapRouter from './routes/swap.js';
 import aiRouter from './routes/ai.js';
 
 // Bootstrap DB on startup
@@ -60,6 +61,7 @@ app.use('/api/transfer', transferRouter);
 app.use('/api/claim', claimRouter);
 app.use('/api/staking', stakingRouter);
 app.use('/api/lending', lendingRouter);
+app.use('/api/swap', swapRouter);
 app.use('/api/ai', aiRouter);
 
 // ─── Error Handling ────────────────────────────────────────────────────────────

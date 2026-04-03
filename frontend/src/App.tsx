@@ -9,6 +9,7 @@ import { LoginPage } from "./pages/LoginPage.js";
 import { DashboardPage } from "./pages/DashboardPage.js";
 import { SendPage } from "./pages/SendPage.js";
 import { LendingPage } from "./pages/LendingPage.js";
+import { SwapPage } from "./pages/SwapPage.js";
 import { ClaimPageContent } from "./components/claim/ClaimPage.js";
 import { config } from "./config.js";
 
@@ -54,6 +55,7 @@ export default function App() {
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/send" element={<SendPage />} />
                   <Route path="/lend" element={<LendingPage />} />
+                  <Route path="/swap" element={<SwapPage />} />
                 </Route>
 
                 {/* Redirects */}

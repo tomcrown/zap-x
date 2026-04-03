@@ -40,6 +40,7 @@ export function Navbar() {
             <NavLink to="/dashboard">Dashboard</NavLink>
             <NavLink to="/send">Send</NavLink>
             <NavLink to="/lend">Lend</NavLink>
+            <NavLink to="/swap">Swap</NavLink>
           </nav>
         )}
 
