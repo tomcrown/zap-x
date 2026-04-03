@@ -13,7 +13,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { connectPrivyWallet, resetStarkZap, getAllBalances } from '../lib/starkzap.js';
-import { userApi, walletApi } from '../lib/api.js';
+import { userApi, walletApi, registerTokenGetter } from '../lib/api.js';
 import { UserProfile, TokenSymbol } from '../types/index.js';
 
 interface WalletContextValue {
@@ -48,16 +48,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [isSdkReady, setIsSdkReady] = useState(false);
   const connectingRef = useRef(false);
 
-  // Store Privy auth token for API calls
+  // Register Privy's getAccessToken so the API interceptor always gets a fresh JWT
   useEffect(() => {
-    if (authenticated) {
-      getAccessToken().then((token) => {
-        if (token) sessionStorage.setItem('privy:token', token);
-      });
-    } else {
-      sessionStorage.removeItem('privy:token');
-    }
-  }, [authenticated, getAccessToken]);
+    registerTokenGetter(getAccessToken);
+  }, [getAccessToken]);
 
   // Auto-connect Starknet wallet after Privy login
   useEffect(() => {

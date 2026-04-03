@@ -12,18 +12,38 @@
  *      { type: 'send', amount: '3', token: 'STRK', recipient: 'alice@example.com' }]
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { config } from '../config/index.js';
-import { AIParseResult, ParsedAction, TokenSymbol, ActionType } from '../models/types.js';
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { config } from "../config/index.js";
+import {
+  AIParseResult,
+  ParsedAction,
+  TokenSymbol,
+  ActionType,
+} from "../models/types.js";
 
-const SUPPORTED_TOKENS: TokenSymbol[] = ['STRK', 'ETH', 'USDC', 'USDT', 'wBTC', 'lBTC', 'tBTC'];
-const SUPPORTED_ACTIONS: ActionType[] = ['send', 'stake', 'unstake', 'swap', 'save', 'invest'];
+const SUPPORTED_TOKENS: TokenSymbol[] = [
+  "STRK",
+  "ETH",
+  "USDC",
+  "USDT",
+  "wBTC",
+  "lBTC",
+  "tBTC",
+];
+const SUPPORTED_ACTIONS: ActionType[] = [
+  "send",
+  "stake",
+  "unstake",
+  "swap",
+  "save",
+  "invest",
+];
 
-// Lazy-init Gemini client
 let _genAI: GoogleGenerativeAI | null = null;
 function getGenAI(): GoogleGenerativeAI {
   if (_genAI) return _genAI;
-  if (!config.gemini.apiKey) throw new Error('GEMINI_API_KEY is not configured.');
+  if (!config.gemini.apiKey)
+    throw new Error("GEMINI_API_KEY is not configured.");
   _genAI = new GoogleGenerativeAI(config.gemini.apiKey);
   return _genAI;
 }
@@ -31,33 +51,34 @@ function getGenAI(): GoogleGenerativeAI {
 // ─── System Prompt ─────────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `
-You are an AI assistant for Zap-X, a DeFi payment application on Starknet.
-Your task is to parse user natural language commands into structured JSON actions.
+You are the AI engine for Zap-X, a DeFi wallet on Starknet. You parse natural language commands into structured JSON actions.
 
-Supported tokens: ${SUPPORTED_TOKENS.join(', ')}
-Supported action types: ${SUPPORTED_ACTIONS.join(', ')}
+Supported tokens: ${SUPPORTED_TOKENS.join(", ")}
+Supported actions: ${SUPPORTED_ACTIONS.join(", ")}
 
 Action schemas:
-- send:    { type: "send",    amount: string, token: TokenSymbol, recipient: string, note?: string }
-- stake:   { type: "stake",   amount: string, token: TokenSymbol }
-- unstake: { type: "unstake", amount: string, token: TokenSymbol }
+- send:    { type: "send",    amount: string, token: TokenSymbol, recipient: string (email, @username, or 0x address) }
 - swap:    { type: "swap",    amount: string, token: TokenSymbol, toToken: TokenSymbol }
 - save:    { type: "save",    amount: string, token: TokenSymbol }
 - invest:  { type: "invest",  amount: string, token: TokenSymbol }
+- stake:   { type: "stake",   amount: string, token: TokenSymbol }
+- unstake: { type: "unstake", amount: string, token: TokenSymbol }
 
 Rules:
-1. Extract ALL actions from the user's command.
-2. For recipients: preserve @username, email addresses, or 0x addresses exactly.
-3. If BTC / Bitcoin is mentioned as a token, use "wBTC" unless user specifies lBTC or tBTC.
-4. If the token is ambiguous, default to "STRK".
-5. If the amount is ambiguous or missing, set amount to "0" and note this in clarification.
-6. Return ONLY valid JSON — no markdown fences, no explanation.
+1. Extract ALL actions from the command. Users can chain multiple: "send X and swap Y" → 2 actions.
+2. Preserve recipients exactly — emails, @handles, 0x addresses.
+3. "save", "earn", "lend", "supply", "deposit" → use "save" type.
+4. "withdraw", "unstake", "pull out", "take out", "redeem" → use "unstake" type. If no amount is given, set amount to "0".
+5. BTC / Bitcoin → "wBTC" unless user says lBTC or tBTC.
+6. Ambiguous token → default "STRK".
+7. Missing amount → set "0" and note in clarification.
+8. Return ONLY valid JSON. No markdown fences, no explanation text.
 
 Response format:
 {
   "actions": [ ...parsed actions... ],
   "confidence": 0.0–1.0,
-  "clarification": "optional message if ambiguous"
+  "clarification": "optional — only include if something is ambiguous or missing"
 }
 `;
 
@@ -66,14 +87,17 @@ Response format:
 export async function parseCommand(userInput: string): Promise<AIParseResult> {
   const trimmed = userInput.trim();
   if (!trimmed) {
-    return { actions: [], original: userInput, confidence: 0, clarification: 'Empty input.' };
+    return {
+      actions: [],
+      original: userInput,
+      confidence: 0,
+      clarification: "Empty input.",
+    };
   }
 
-  // Fast local parse for simple single-action commands (saves API calls)
   const localResult = tryLocalParse(trimmed);
   if (localResult) return localResult;
 
-  // Full Gemini parse
   try {
     const genAI = getGenAI();
     const model = genAI.getGenerativeModel({
@@ -81,16 +105,19 @@ export async function parseCommand(userInput: string): Promise<AIParseResult> {
       systemInstruction: SYSTEM_PROMPT,
     });
 
-    const prompt = `Parse this user command into structured actions:\n"${trimmed}"`;
+    const prompt = `Parse this command:\n"${trimmed}"`;
     const result = await model.generateContent(prompt);
     const text = result.response.text().trim();
 
-    // Strip accidental markdown fences
-    const jsonText = text.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '').trim();
-
-    const parsed = JSON.parse(jsonText) as { actions: ParsedAction[]; confidence: number; clarification?: string };
-
-    // Validate actions
+    const jsonText = text
+      .replace(/^```(?:json)?\n?/i, "")
+      .replace(/\n?```$/i, "")
+      .trim();
+    const parsed = JSON.parse(jsonText) as {
+      actions: ParsedAction[];
+      confidence: number;
+      clarification?: string;
+    };
     const validatedActions = (parsed.actions ?? []).filter(validateAction);
 
     return {
@@ -100,12 +127,13 @@ export async function parseCommand(userInput: string): Promise<AIParseResult> {
       clarification: parsed.clarification,
     };
   } catch (err) {
-    console.error('[AIService] Gemini parse failed:', err);
+    console.error("[AIService] Gemini parse failed:", err);
     return {
       actions: [],
       original: userInput,
       confidence: 0,
-      clarification: 'Could not parse your command. Please try rephrasing.',
+      clarification:
+        'I couldn\'t parse that. Try something like "send 5 STRK to tony@gmail.com" or "swap 1 ETH to USDC".',
     };
   }
 }
@@ -115,40 +143,66 @@ export async function parseCommand(userInput: string): Promise<AIParseResult> {
 const LOCAL_SEND_RE =
   /^(?:send|transfer|zap)\s+([\d.]+)\s*(STRK|ETH|USDC|USDT|wBTC|BTC|lBTC|tBTC)\s+(?:to\s+)?(@[\w]+|[\w._%+-]+@[\w.-]+\.[A-Z]{2,}|0x[0-9a-fA-F]+)(?:\s+(.+))?$/i;
 
+const LOCAL_SWAP_RE =
+  /^(?:swap|exchange|convert)\s+([\d.]+)\s*(STRK|ETH|USDC|USDT|wBTC|BTC)\s+(?:to|for)\s+(STRK|ETH|USDC|USDT|wBTC|BTC)$/i;
+
 const LOCAL_STAKE_RE =
-  /^(?:stake|lock)\s+([\d.]+)\s*(STRK|ETH|USDC|USDT)$/i;
+  /^(?:stake|lock|save|lend|earn|supply|deposit|invest)\s+([\d.]+)\s*(STRK|ETH|USDC|USDT)$/i;
 
 const LOCAL_UNSTAKE_RE =
-  /^(?:unstake|unlock|withdraw)\s+([\d.]+)\s*(STRK|ETH|USDC|USDT)$/i;
+  /^(?:unstake|unlock|withdraw|pull\s+out|take\s+out|redeem)\s+(?:my\s+)?(?:([\d.]+)\s+)?(STRK|ETH|USDC|USDT)(?:\s+(?:position|funds|savings|deposit|balance))?$/i;
 
 function tryLocalParse(input: string): AIParseResult | null {
   let m: RegExpMatchArray | null;
 
   m = input.match(LOCAL_SEND_RE);
   if (m) {
-    const token = normaliseToken(m[2]);
     return {
-      actions: [{ type: 'send', amount: m[1], token, recipient: m[3], note: m[4] }],
+      actions: [
+        {
+          type: "send",
+          amount: m[1],
+          token: normaliseToken(m[2]),
+          recipient: m[3],
+          note: m[4],
+        },
+      ],
       original: input,
-      confidence: 0.95,
+      confidence: 0.97,
+    };
+  }
+
+  m = input.match(LOCAL_SWAP_RE);
+  if (m) {
+    return {
+      actions: [
+        {
+          type: "swap",
+          amount: m[1],
+          token: normaliseToken(m[2]),
+          toToken: normaliseToken(m[3]),
+        },
+      ],
+      original: input,
+      confidence: 0.97,
     };
   }
 
   m = input.match(LOCAL_STAKE_RE);
   if (m) {
     return {
-      actions: [{ type: 'stake', amount: m[1], token: normaliseToken(m[2]) }],
+      actions: [{ type: "save", amount: m[1], token: normaliseToken(m[2]) }],
       original: input,
-      confidence: 0.95,
+      confidence: 0.97,
     };
   }
 
   m = input.match(LOCAL_UNSTAKE_RE);
   if (m) {
     return {
-      actions: [{ type: 'unstake', amount: m[1], token: normaliseToken(m[2]) }],
+      actions: [{ type: "unstake", amount: m[1] ?? "0", token: normaliseToken(m[2]) }],
       original: input,
-      confidence: 0.95,
+      confidence: 0.97,
     };
   }
 
@@ -157,16 +211,17 @@ function tryLocalParse(input: string): AIParseResult | null {
 
 function normaliseToken(raw: string): TokenSymbol {
   const upper = raw.toUpperCase();
-  if (upper === 'BTC') return 'wBTC';
-  if (SUPPORTED_TOKENS.includes(upper as TokenSymbol)) return upper as TokenSymbol;
-  return 'STRK';
+  if (upper === "BTC") return "wBTC";
+  if (SUPPORTED_TOKENS.includes(upper as TokenSymbol))
+    return upper as TokenSymbol;
+  return "STRK";
 }
 
 function validateAction(action: unknown): action is ParsedAction {
-  if (typeof action !== 'object' || action === null) return false;
+  if (typeof action !== "object" || action === null) return false;
   const a = action as Record<string, unknown>;
   if (!SUPPORTED_ACTIONS.includes(a.type as ActionType)) return false;
-  if (typeof a.amount !== 'string' || isNaN(parseFloat(a.amount))) return false;
+  if (typeof a.amount !== "string" || isNaN(parseFloat(a.amount))) return false;
   if (!SUPPORTED_TOKENS.includes(a.token as TokenSymbol)) return false;
   return true;
 }

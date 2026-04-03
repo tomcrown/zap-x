@@ -6,11 +6,8 @@ import { WalletProvider } from "./contexts/WalletContext.js";
 import { ToastProvider } from "./contexts/ToastContext.js";
 import { AuthLayout, PublicLayout } from "./components/layout/Layout.js";
 import { LoginPage } from "./pages/LoginPage.js";
-import { DashboardPage } from "./pages/DashboardPage.js";
-import { SendPage } from "./pages/SendPage.js";
-import { LendingPage } from "./pages/LendingPage.js";
-import { SwapPage } from "./pages/SwapPage.js";
 import { ClaimPageContent } from "./components/claim/ClaimPage.js";
+import { AIExecutor } from "./components/send/AIExecutor.js";
 import { config } from "./config.js";
 
 const queryClient = new QueryClient({
@@ -29,10 +26,10 @@ export default function App() {
       config={{
         appearance: {
           theme: "dark",
-          accentColor: "#7c3aed",
+          accentColor: "#22d3ee",
           logo: undefined,
         },
-        loginMethods: ["email", "google", "twitter", "wallet"],
+        loginMethods: ["email", "google"],
         embeddedWallets: {
           createOnLogin: "users-without-wallets",
           requireUserPasswordOnCreate: false,
@@ -50,23 +47,17 @@ export default function App() {
                   <Route path="/claim/:token" element={<ClaimPageContent />} />
                 </Route>
 
-                {/* Protected routes */}
+                {/* App shell — chat is the entire product */}
                 <Route element={<AuthLayout />}>
-                  <Route path="/dashboard" element={<DashboardPage />} />
-                  <Route path="/send" element={<SendPage />} />
-                  <Route path="/lend" element={<LendingPage />} />
-                  <Route path="/swap" element={<SwapPage />} />
+                  <Route path="/" element={<AIExecutor />} />
+                  {/* Legacy route redirects */}
+                  <Route path="/dashboard" element={<Navigate to="/" replace />} />
+                  <Route path="/send" element={<Navigate to="/" replace />} />
+                  <Route path="/lend" element={<Navigate to="/" replace />} />
+                  <Route path="/swap" element={<Navigate to="/" replace />} />
                 </Route>
 
-                {/* Redirects */}
-                <Route
-                  path="/"
-                  element={<Navigate to="/dashboard" replace />}
-                />
-                <Route
-                  path="*"
-                  element={<Navigate to="/dashboard" replace />}
-                />
+                <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </BrowserRouter>
           </WalletProvider>

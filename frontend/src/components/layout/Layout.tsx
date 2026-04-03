@@ -1,24 +1,27 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
-import { Navbar } from './Navbar.js';
-import { Sidebar } from './Sidebar.js';
+import { ChatHeader } from './Navbar.js';
+import { SidePanel } from '../chat/SidePanel.js';
 import { ToastContainer } from '../common/Toast.js';
 import { useWallet } from '../../contexts/WalletContext.js';
 import { FullPageLoader } from '../common/LoadingSpinner.js';
 
-// Layout that requires authentication
 export function AuthLayout() {
   const { isAuthenticated, isLoading } = useWallet();
+  const [panelOpen, setPanelOpen] = useState(false);
 
   if (isLoading) return <FullPageLoader />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   return (
-    <div className="min-h-screen bg-surface">
-      <Navbar />
-      <div className="max-w-7xl mx-auto flex">
-        <Sidebar />
-        <main className="flex-1 min-w-0 p-6">
+    <div className="flex flex-col h-screen bg-surface overflow-hidden">
+      <ChatHeader
+        panelOpen={panelOpen}
+        onTogglePanel={() => setPanelOpen((v) => !v)}
+      />
+      <div className="flex flex-1 overflow-hidden">
+        <SidePanel isOpen={panelOpen} onClose={() => setPanelOpen(false)} />
+        <main className="flex-1 overflow-hidden min-w-0">
           <Outlet />
         </main>
       </div>
@@ -27,14 +30,10 @@ export function AuthLayout() {
   );
 }
 
-// Public layout (no sidebar)
 export function PublicLayout() {
   return (
     <div className="min-h-screen bg-surface">
-      <Navbar />
-      <main>
-        <Outlet />
-      </main>
+      <Outlet />
       <ToastContainer />
     </div>
   );

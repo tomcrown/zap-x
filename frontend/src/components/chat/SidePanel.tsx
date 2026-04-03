@@ -1,0 +1,453 @@
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { transferApi, lendingApi, swapApi, claimApi } from "../../lib/api.js";
+import { useWallet } from "../../contexts/WalletContext.js";
+import { TokenSymbol, ClaimLink } from "../../types/index.js";
+
+const STARKSCAN = "https://starkscan.co/tx/";
+
+const TOKEN_LABEL: Record<string, string> = {
+  STRK: "STRK",
+  ETH: "ETH",
+  USDC: "USDC",
+  USDT: "USDT",
+  wBTC: "BTC",
+};
+
+const CAPABILITIES = [
+  { cmd: "Send", ex: "send 5 STRK tony@gmail.com" },
+  { cmd: "Email transfer", ex: "send 10 USDC to friend@email.com" },
+  { cmd: "Swap", ex: "swap 1 ETH to USDC" },
+  { cmd: "Lend", ex: "lend 50 USDC" },
+  { cmd: "Withdraw", ex: "withdraw my USDC position" },
+  { cmd: "Balance", ex: "show my balance" },
+  { cmd: "History", ex: "recent transactions" },
+];
+
+// ─── Unified activity entry ────────────────────────────────────────────────────
+
+type ActivityKind = "send" | "receive" | "swap" | "lend" | "withdraw";
+
+interface ActivityEntry {
+  id: string;
+  kind: ActivityKind;
+  label: string;
+  amount: string;
+  token: string;
+  txHash: string | null;
+  date: string;
+}
+
+function buildActivity(
+  walletAddress: string,
+  txs: any[],
+  swps: any[],
+  positions: any[],
+): ActivityEntry[] {
+  const entries: ActivityEntry[] = [];
+
+  for (const tx of txs as any[]) {
+    const isSent = tx.sender_wallet === walletAddress;
+    entries.push({
+      id: `tx-${tx.id}`,
+      kind: isSent ? "send" : "receive",
+      label: isSent ? tx.recipient_identifier : tx.sender_wallet,
+      amount: tx.amount,
+      token: tx.token,
+      txHash: tx.tx_hash,
+      date: tx.created_at,
+    });
+  }
+
+  for (const sw of swps as any[]) {
+    entries.push({
+      id: `sw-${sw.id}`,
+      kind: "swap",
+      label: `${sw.token_in} → ${sw.token_out}`,
+      amount: sw.amount_in,
+      token: sw.token_in,
+      txHash: sw.tx_hash,
+      date: sw.created_at,
+    });
+  }
+
+  for (const pos of positions as any[]) {
+    entries.push({
+      id: `lend-${pos.id}`,
+      kind: pos.status === "withdrawn" ? "withdraw" : "lend",
+      label: "Vesu",
+      amount: pos.supplied_amount,
+      token: pos.token,
+      txHash: pos.entry_tx_hash,
+      date: pos.created_at,
+    });
+  }
+
+  return entries
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 6);
+}
+
+const KIND_COLOR: Record<ActivityKind, string> = {
+  send: "text-red-400",
+  receive: "text-green-400",
+  swap: "text-accent",
+  lend: "text-yellow-400",
+  withdraw: "text-zinc-400",
+};
+const KIND_SIGN: Record<ActivityKind, string> = {
+  send: "−",
+  receive: "+",
+  swap: "⇄",
+  lend: "↑",
+  withdraw: "↓",
+};
+
+// ─── Claim row ─────────────────────────────────────────────────────────────────
+
+function ClaimRow({ claim }: { claim: ClaimLink }) {
+  const queryClient = useQueryClient();
+  const [cancelling, setCancelling] = useState(false);
+
+  async function handleCancel() {
+    if (!confirm(`Cancel claim of ${claim.amount} ${claim.tokenType}? Funds will be refunded to your wallet.`)) return;
+    setCancelling(true);
+    try {
+      await claimApi.cancel(claim.token);
+      queryClient.invalidateQueries({ queryKey: ["claims"] });
+    } catch (e: any) {
+      alert(e.message ?? "Cancel failed");
+    } finally {
+      setCancelling(false);
+    }
+  }
+
+  const isPending = claim.status === "pending";
+  const recipient = claim.recipientEmail ?? claim.recipientUsername ?? "—";
+  const shortRecipient =
+    recipient.length > 18 ? `${recipient.slice(0, 14)}…` : recipient;
+
+  return (
+    <div className="flex items-start justify-between gap-2 py-1.5">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span
+            className={`text-[10px] font-mono uppercase tracking-wider ${
+              isPending
+                ? "text-yellow-500"
+                : claim.status === "claimed"
+                  ? "text-green-500"
+                  : "text-zinc-600"
+            }`}
+          >
+            {claim.status}
+          </span>
+          <span className="text-xs font-mono text-white">
+            {claim.amount} {claim.tokenType}
+          </span>
+        </div>
+        <span className="text-[11px] font-mono text-zinc-600 block truncate">
+          → {shortRecipient}
+        </span>
+      </div>
+      {isPending && (
+        <button
+          onClick={handleCancel}
+          disabled={cancelling}
+          className="text-[10px] font-mono text-zinc-700 hover:text-red-400 transition-colors shrink-0 mt-0.5 disabled:opacity-40"
+        >
+          {cancelling ? "…" : "cancel"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── Main panel ────────────────────────────────────────────────────────────────
+
+interface Props {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export function SidePanel({ isOpen, onClose }: Props) {
+  const { walletAddress, balances, balancesLoading, refreshBalances } =
+    useWallet();
+
+  const { data: transactions } = useQuery({
+    queryKey: ["transactions", walletAddress],
+    queryFn: transferApi.history,
+    enabled: !!walletAddress,
+    refetchInterval: 30_000,
+  });
+
+  const { data: swaps } = useQuery({
+    queryKey: ["swaps", walletAddress],
+    queryFn: swapApi.history,
+    enabled: !!walletAddress,
+    refetchInterval: 30_000,
+  });
+
+  const { data: positions } = useQuery({
+    queryKey: ["lending-positions", walletAddress],
+    queryFn: lendingApi.positions,
+    enabled: !!walletAddress,
+    refetchInterval: 60_000,
+  });
+
+  const { data: claims } = useQuery({
+    queryKey: ["claims"],
+    queryFn: claimApi.list,
+    enabled: !!walletAddress,
+    refetchInterval: 30_000,
+  });
+
+  const displayTokens: TokenSymbol[] = ["STRK", "ETH", "USDC", "wBTC"];
+  const activePositions = (positions ?? [])
+    .filter((p) => p.status === "active")
+    .slice(0, 3);
+
+  const activity = buildActivity(
+    walletAddress ?? "",
+    transactions ?? [],
+    swaps ?? [],
+    positions ?? [],
+  );
+
+  // Show pending claims first, then most recent non-pending (max 4 total)
+  const pendingClaims = (claims ?? []).filter((c) => c.status === "pending");
+  const recentClaims = (claims ?? [])
+    .filter((c) => c.status !== "pending")
+    .slice(0, Math.max(0, 4 - pendingClaims.length));
+  const displayClaims = [...pendingClaims, ...recentClaims];
+
+  return (
+    <>
+      {/* Overlay for mobile */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-20 lg:hidden"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Panel */}
+      <aside
+        className={`
+          fixed lg:relative z-30 lg:z-auto
+          top-14 lg:top-auto bottom-0 left-0
+          flex flex-col
+          bg-surface-card border-r border-surface-border
+          transition-all duration-300 ease-in-out overflow-hidden
+          ${isOpen ? "w-72 lg:w-64" : "w-0"}
+        `}
+      >
+        <div className="flex flex-col h-full min-w-[16rem] overflow-y-auto">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-surface-border shrink-0">
+            <span className="text-xs font-mono text-zinc-600 uppercase tracking-widest">
+              Portfolio
+            </span>
+            <button
+              onClick={onClose}
+              className="text-zinc-700 hover:text-zinc-400 transition-colors lg:hidden"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+
+          {/* Balances */}
+          <div className="px-4 py-4 border-b border-surface-border">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs text-zinc-600 font-mono">Balances</span>
+              <button
+                onClick={refreshBalances}
+                disabled={balancesLoading}
+                className="text-zinc-700 hover:text-zinc-400 transition-colors"
+              >
+                <svg
+                  className={`w-3.5 h-3.5 ${balancesLoading ? "animate-spin" : ""}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div className="space-y-2">
+              {displayTokens.map((token) => {
+                const amount = parseFloat(balances[token] ?? "0");
+                const hasBalance = amount > 0;
+                return (
+                  <div
+                    key={token}
+                    className="flex items-center justify-between"
+                  >
+                    <span className="text-xs font-mono text-zinc-500">
+                      {TOKEN_LABEL[token]}
+                    </span>
+                    <span
+                      className={`text-xs font-mono ${hasBalance ? "text-white" : "text-zinc-800"}`}
+                    >
+                      {amount.toFixed(4)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Active lending positions */}
+          {activePositions.length > 0 && (
+            <div className="px-4 py-4 border-b border-surface-border">
+              <span className="text-xs text-zinc-600 font-mono block mb-3">
+                Lending
+              </span>
+              <div className="space-y-2">
+                {activePositions.map((pos) => (
+                  <div
+                    key={pos.id}
+                    className="flex items-center justify-between"
+                  >
+                    <span className="text-xs font-mono text-zinc-500">
+                      {pos.token}
+                    </span>
+                    <span className="text-xs font-mono text-accent">
+                      {parseFloat(pos.supplied_amount).toFixed(4)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Email transfers (claims) */}
+          {displayClaims.length > 0 && (
+            <div className="px-4 py-4 border-b border-surface-border">
+              <span className="text-xs text-zinc-600 font-mono block mb-2">
+                Email transfers
+              </span>
+              <div className="divide-y divide-surface-border">
+                {displayClaims.map((c) => (
+                  <ClaimRow key={c.token} claim={c} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Activity feed */}
+          <div className="px-4 py-4 border-b border-surface-border">
+            <span className="text-xs text-zinc-600 font-mono block mb-3">
+              Activity
+            </span>
+            {activity.length === 0 ? (
+              <p className="text-xs text-zinc-800 font-mono">
+                no activity yet
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {activity.map((entry) => {
+                  const shortLabel =
+                    entry.label.length > 16
+                      ? `${entry.label.slice(0, 10)}…${entry.label.slice(-4)}`
+                      : entry.label;
+                  const row = (
+                    <div className="flex items-center justify-between gap-2 group">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span
+                          className={`text-xs font-mono shrink-0 ${KIND_COLOR[entry.kind]}`}
+                        >
+                          {KIND_SIGN[entry.kind]}
+                        </span>
+                        <span className="text-xs font-mono text-zinc-600 truncate">
+                          {entry.kind === "swap"
+                            ? entry.label
+                            : shortLabel}
+                        </span>
+                        {entry.txHash && (
+                          <svg
+                            className="w-2.5 h-2.5 text-zinc-800 group-hover:text-accent shrink-0 transition-colors"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                            />
+                          </svg>
+                        )}
+                      </div>
+                      <span
+                        className={`text-xs font-mono shrink-0 ${KIND_COLOR[entry.kind]}`}
+                      >
+                        {entry.amount} {entry.token}
+                      </span>
+                    </div>
+                  );
+
+                  return entry.txHash ? (
+                    <a
+                      key={entry.id}
+                      href={STARKSCAN + entry.txHash}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block"
+                    >
+                      {row}
+                    </a>
+                  ) : (
+                    <div key={entry.id}>{row}</div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Capabilities */}
+          <div className="px-4 py-4 flex-1">
+            <span className="text-xs text-zinc-600 font-mono block mb-3">
+              What I can do
+            </span>
+            <div className="space-y-1.5">
+              {CAPABILITIES.map((c) => (
+                <div key={c.cmd} className="group">
+                  <span className="text-xs font-mono text-zinc-700 group-hover:text-zinc-400 transition-colors">
+                    {c.ex}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="px-4 py-3 border-t border-surface-border shrink-0">
+            <p className="text-xs font-mono text-zinc-800 text-center">
+              Starknet · Sepolia
+            </p>
+          </div>
+        </div>
+      </aside>
+    </>
+  );
+}

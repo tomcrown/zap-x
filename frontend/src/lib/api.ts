@@ -29,9 +29,17 @@ export const apiClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Inject Privy auth token from sessionStorage on every request
-apiClient.interceptors.request.use((reqConfig) => {
-  const token = sessionStorage.getItem('privy:token') ?? localStorage.getItem('zapx:devToken');
+// Allow WalletContext to register Privy's getAccessToken so we always get a fresh JWT
+let _tokenGetter: (() => Promise<string | null>) | null = null;
+export function registerTokenGetter(fn: () => Promise<string | null>) {
+  _tokenGetter = fn;
+}
+
+// Inject Privy auth token — call fresh getter each time to avoid expired JWTs
+apiClient.interceptors.request.use(async (reqConfig) => {
+  const token = _tokenGetter
+    ? await _tokenGetter().catch(() => sessionStorage.getItem('privy:token'))
+    : sessionStorage.getItem('privy:token') ?? localStorage.getItem('zapx:devToken');
   if (token) reqConfig.headers.Authorization = `Bearer ${token}`;
   return reqConfig;
 });
@@ -185,6 +193,9 @@ export const lendingApi = {
 
   withdraw: (positionId: number, txHash: string) =>
     apiClient.post('/lending/withdraw', { positionId, txHash }).then((r) => r.data),
+
+  void: (positionIds: number[]) =>
+    apiClient.post('/lending/void', { positionIds }).then((r) => r.data),
 };
 
 // ─── Swap ─────────────────────────────────────────────────────────────────────

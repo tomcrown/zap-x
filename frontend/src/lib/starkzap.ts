@@ -9,7 +9,12 @@
  */
 
 import { StarkZap, Amount, ChainId, getPresets } from "starkzap";
+import { CallData, uint256, RpcProvider } from "starknet";
 import type { TokenSymbol } from "../types/index.js";
+
+// Vesu Sepolia constants (from starkzap vesuPresets)
+const VESU_SEPOLIA_POOL_FACTORY = "0x03ac869e64b1164aaee7f3fd251f86581eab8bfbbd2abdf1e49c773282d4a092";
+const VESU_SEPOLIA_DEFAULT_POOL  = "0x06227c13372b8c7b7f38ad1cfe05b5cf515b4e5c596dd05fe8437ab9747b2093";
 
 // Token presets keyed by network — resolved once at module load
 const _chainId = (import.meta.env.VITE_STARKNET_NETWORK ?? "sepolia") === "mainnet"
@@ -267,6 +272,28 @@ export interface LendingPosition {
   healthFactor: string | null;
 }
 
+/** Try an async fn with sponsored fee, fallback to user_pays if paymaster rejects. */
+async function withFeeFallback<T>(
+  fn: (opts: { feeMode: string } | undefined) => Promise<T>,
+  sponsored: boolean,
+): Promise<T> {
+  if (!sponsored) return fn(undefined);
+  try {
+    return await fn({ feeMode: "sponsored" as any });
+  } catch (err: any) {
+    const msg = err?.message ?? "";
+    // Paymaster rejected → retry with user_pays (user covers gas in STRK)
+    if (
+      msg.includes("paymaster") ||
+      msg.includes("Paymaster") ||
+      msg.includes("sponsored")
+    ) {
+      return fn({ feeMode: "user_pays" as any });
+    }
+    throw err;
+  }
+}
+
 export async function executeLendingDeposit(
   token: TokenSymbol,
   amount: string,
@@ -278,11 +305,72 @@ export async function executeLendingDeposit(
 
   const parsedAmount = Amount.parse(amount, tokenObj as any);
   const lending = wallet.lending();
-  const result = await lending.deposit(
-    { token: tokenObj as any, amount: parsedAmount },
-    gasless ? { feeMode: "sponsored" as any } : undefined,
+  const result = await withFeeFallback(
+    (opts) => lending.deposit({ token: tokenObj as any, amount: parsedAmount }, opts as any),
+    !!gasless,
   );
   return (result as any).hash ?? (result as any).transaction_hash;
+}
+
+/**
+ * Direct fallback: bypass `max_redeem` (which returns 0 on Sepolia due to stale oracles)
+ * and instead call `balance_of` on the vToken, then `redeem(shares, receiver, owner)`.
+ */
+async function redeemAllVesuSharesDirect(
+  tokenAddress: string,
+  wallet: any,
+  gasless: boolean,
+): Promise<string> {
+  const owner: string = (wallet as any).address;
+  const rpc = import.meta.env.VITE_STARKNET_RPC_URL as string | undefined;
+  const provider = new RpcProvider({ nodeUrl: rpc });
+
+  // Resolve vToken address from pool factory
+  const vTokenRes = await provider.callContract({
+    contractAddress: VESU_SEPOLIA_POOL_FACTORY,
+    entrypoint: "v_token_for_asset",
+    calldata: CallData.compile([VESU_SEPOLIA_DEFAULT_POOL, tokenAddress]),
+  });
+  const vTokenAddress: string = vTokenRes[0];
+  if (!vTokenAddress || BigInt(String(vTokenAddress)) === 0n) {
+    throw new Error("No Vesu pool found for this token on Sepolia");
+  }
+
+  // Read actual share balance (balance_of, not max_redeem which has oracle dependency)
+  const balRes = await provider.callContract({
+    contractAddress: vTokenAddress,
+    entrypoint: "balance_of",
+    calldata: CallData.compile([owner]),
+  });
+  const shares =
+    BigInt(String(balRes[0])) + (BigInt(String(balRes[1] ?? "0")) << 128n);
+
+  if (shares === 0n) {
+    throw new Error(
+      "No vToken shares found — your deposit may not have confirmed on-chain. Check your wallet balance.",
+    );
+  }
+
+  // Execute redeem(shares, receiver, owner) directly on the vToken contract
+  const result = await withFeeFallback(
+    (opts) =>
+      (wallet as any).execute(
+        [
+          {
+            contractAddress: vTokenAddress,
+            entrypoint: "redeem",
+            calldata: CallData.compile([
+              uint256.bnToUint256(shares),
+              owner,
+              owner,
+            ]),
+          },
+        ],
+        opts,
+      ),
+    gasless,
+  );
+  return (result as any).transaction_hash ?? (result as any).hash;
 }
 
 export async function executeLendingWithdraw(
@@ -292,14 +380,28 @@ export async function executeLendingWithdraw(
 ): Promise<string> {
   const tokenObj = getToken(token);
   const wallet = getConnectedWallet();
+  await wallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" as any });
 
-  const parsedAmount = Amount.parse(amount, tokenObj as any);
   const lending = wallet.lending();
-  const result = await lending.withdraw(
-    { token: tokenObj as any, amount: parsedAmount },
-    undefined,
-  );
-  return (result as any).hash ?? (result as any).transaction_hash;
+  try {
+    // Standard path: withdrawMax uses max_redeem → redeem
+    const result = await withFeeFallback(
+      (opts) => lending.withdrawMax({ token: tokenObj as any }, opts as any),
+      !!gasless,
+    );
+    return (result as any).hash ?? (result as any).transaction_hash;
+  } catch (err: any) {
+    // max_redeem returns 0 on Sepolia when oracle is stale — fall back to
+    // directly reading balance_of and calling redeem on the vToken
+    if (err.message?.includes("No withdrawable Vesu shares")) {
+      return redeemAllVesuSharesDirect(
+        (tokenObj as any).address,
+        wallet,
+        !!gasless,
+      );
+    }
+    throw err;
+  }
 }
 
 export async function getLendingMarkets(): Promise<LendingMarket[]> {

@@ -1,34 +1,30 @@
 /**
- * AIExecutor
- *
- * Full chat-driven command interface. Users type natural language commands,
- * the backend parses + enriches them, and this component executes each
- * action on-chain via the Starkzap SDK.
- *
- * Supported actions: send, swap, save/stake, unstake, lend/invest
+ * AIExecutor — the entire product UI.
+ * Chat interface that parses natural language, enriches actions via backend,
+ * and executes them on-chain through the Starkzap SDK.
  */
 
-import React, { useState, useRef, useEffect } from 'react';
-import { chatApi, transferApi, swapApi, lendingApi } from '../../lib/api.js';
+import { useState, useRef, useEffect } from "react";
+import { chatApi, transferApi, swapApi, lendingApi } from "../../lib/api.js";
 import {
   executeTransfer,
   executeSwap,
   executeLendingDeposit,
   executeLendingWithdraw,
-} from '../../lib/starkzap.js';
-import { useWallet } from '../../contexts/WalletContext.js';
-import { useToast } from '../../contexts/ToastContext.js';
-import { Button } from '../common/Button.js';
-import type { ParsedAction, TokenSymbol } from '../../types/index.js';
+} from "../../lib/starkzap.js";
+import { useWallet } from "../../contexts/WalletContext.js";
+import { useToast } from "../../contexts/ToastContext.js";
+import type { ParsedAction, TokenSymbol } from "../../types/index.js";
 
 type EnrichedAction = ParsedAction & {
   ready: boolean;
   recipientAddress?: string;
   needsEscrow?: boolean;
   warning?: string;
+  _done?: boolean;
 };
 
-type MessageRole = 'user' | 'assistant' | 'system';
+type MessageRole = "user" | "assistant" | "system";
 
 interface Message {
   id: number;
@@ -39,86 +35,334 @@ interface Message {
   done?: boolean;
 }
 
-const EXAMPLES = [
-  'Send 2 STRK to tomcrown317@gmail.com',
-  'Swap 1 STRK to USDC',
-  'Save 3 STRK',
-  'Check my balance',
+// ─── Quick Commands ────────────────────────────────────────────────────────────
+
+const QUICK_COMMANDS = [
+  {
+    label: "Send",
+    icon: (
+      <svg
+        className="w-3.5 h-3.5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+        />
+      </svg>
+    ),
+    fill: "Send  STRK to ",
+    send: false,
+  },
+  {
+    label: "Swap",
+    icon: (
+      <svg
+        className="w-3.5 h-3.5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+        />
+      </svg>
+    ),
+    fill: "Swap  STRK to USDC",
+    send: false,
+  },
+  {
+    label: "Lend",
+    icon: (
+      <svg
+        className="w-3.5 h-3.5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1"
+        />
+      </svg>
+    ),
+    fill: "Lend  USDC",
+    send: false,
+  },
+  {
+    label: "Balance",
+    icon: (
+      <svg
+        className="w-3.5 h-3.5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+        />
+      </svg>
+    ),
+    fill: "Show my balance",
+    send: true,
+  },
+  {
+    label: "History",
+    icon: (
+      <svg
+        className="w-3.5 h-3.5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+        />
+      </svg>
+    ),
+    fill: "Show my recent transactions",
+    send: true,
+  },
+  {
+    label: "Help",
+    icon: (
+      <svg
+        className="w-3.5 h-3.5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+        />
+      </svg>
+    ),
+    fill: "What can you do?",
+    send: true,
+  },
 ];
 
+const TOKEN_DISPLAY = ["STRK", "ETH", "USDC", "wBTC"] as TokenSymbol[];
+
 let _msgId = 0;
-function nextId() { return ++_msgId; }
+function nextId() {
+  return ++_msgId;
+}
+
+// ─── Portfolio Bar ─────────────────────────────────────────────────────────────
+
+function PortfolioBar() {
+  const { walletAddress, balances, balancesLoading, refreshBalances } =
+    useWallet();
+  const [copied, setCopied] = useState(false);
+
+  function copyAddress() {
+    if (!walletAddress) return;
+    navigator.clipboard.writeText(walletAddress).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  const strkBal = parseFloat(balances["STRK"] ?? "0");
+  const ethBal = parseFloat(balances["ETH"] ?? "0");
+  const usdcBal = parseFloat(balances["USDC"] ?? "0");
+  const btcBal = parseFloat(balances["wBTC"] ?? "0");
+
+  const shortAddr = walletAddress
+    ? `${walletAddress.slice(0, 8)}…${walletAddress.slice(-6)}`
+    : "";
+
+  return (
+    <div className="border-b border-surface-border bg-surface-card/50 px-4 sm:px-8 py-5">
+      {/* Primary balance */}
+      <div className="text-center mb-5">
+        <p className="text-xs font-mono text-zinc-700 uppercase tracking-widest mb-1">
+          STRK Balance
+        </p>
+        <div className="flex items-end justify-center gap-2">
+          {balancesLoading ? (
+            <div className="h-12 w-32 bg-zinc-900 rounded-lg animate-pulse" />
+          ) : (
+            <>
+              <span className="text-3xl sm:text-4xl font-bold text-white font-mono leading-none">
+                {strkBal.toFixed(4)}
+              </span>
+              <span className="text-xl text-accent font-mono font-semibold mb-1">
+                STRK
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Secondary tokens */}
+      <div className="flex items-center justify-center gap-4 sm:gap-8 mb-4">
+        {[
+          { label: "ETH", val: ethBal },
+          { label: "USDC", val: usdcBal },
+          { label: "BTC", val: btcBal },
+        ].map(({ label, val }) => (
+          <div key={label} className="text-center">
+            <p className="text-xs font-mono text-zinc-700">{label}</p>
+            <p
+              className={`text-sm font-mono font-semibold mt-0.5 ${val > 0 ? "text-zinc-300" : "text-zinc-800"}`}
+            >
+              {val.toFixed(4)}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* Wallet address + actions */}
+      <div className="flex items-center justify-center gap-3">
+        {walletAddress && (
+          <button
+            onClick={copyAddress}
+            title="Copy wallet address"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface border border-surface-border hover:border-zinc-700 transition-colors group"
+          >
+            <svg
+              className="w-3.5 h-3.5 text-zinc-700 group-hover:text-zinc-400 transition-colors"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+              />
+            </svg>
+            <span className="font-mono text-xs text-zinc-600 group-hover:text-zinc-400 transition-colors">
+              {copied ? "copied ✓" : shortAddr}
+            </span>
+          </button>
+        )}
+        <button
+          onClick={refreshBalances}
+          disabled={balancesLoading}
+          title="Refresh balances"
+          className="w-7 h-7 flex items-center justify-center rounded-lg bg-surface border border-surface-border hover:border-zinc-700 transition-colors text-zinc-700 hover:text-zinc-400"
+        >
+          <svg
+            className={`w-3.5 h-3.5 ${balancesLoading ? "animate-spin" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────────
 
 export function AIExecutor() {
-  const { walletAddress, balances, refreshBalances } = useWallet();
-  const { toast } = useToast();
+  const { walletAddress, balances, refreshBalances, profile } = useWallet();
+  const { toast: showToast } = useToast();
 
-  const [messages, setMessages] = useState<Message[]>([{
-    id: nextId(),
-    role: 'system',
-    text: 'Hi! I\'m your Zap-X AI assistant. Tell me what you\'d like to do — send, swap, save, or lend tokens.',
-  }]);
-  const [input, setInput] = useState('');
+  const greeting = profile?.username ? `@${profile.username}` : "there";
+
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: nextId(),
+      role: "assistant",
+      text: `Hey ${greeting} — ready to move assets. Send to emails, swap, lend, or just ask me anything.`,
+    },
+  ]);
+  const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const addMessage = (msg: Omit<Message, 'id'>) => {
+  const addMessage = (msg: Omit<Message, "id">) =>
     setMessages((prev) => [...prev, { ...msg, id: nextId() }]);
-  };
 
-  const updateMessage = (id: number, patch: Partial<Message>) => {
-    setMessages((prev) => prev.map((m) => m.id === id ? { ...m, ...patch } : m));
-  };
+  const updateMessage = (id: number, patch: Partial<Message>) =>
+    setMessages((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+    );
 
-  const handleSend = async () => {
-    const text = input.trim();
+  const handleSend = async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim();
     if (!text || loading) return;
-    setInput('');
+    setInput("");
     setLoading(true);
-
-    addMessage({ role: 'user', text });
+    addMessage({ role: "user", text });
 
     try {
       const result = await chatApi.send(text);
-
       if (!result.success || result.actions.length === 0) {
-        addMessage({
-          role: 'assistant',
-          text: result.message,
-        });
+        addMessage({ role: "assistant", text: result.message });
         return;
       }
-
       const msgId = nextId();
-      setMessages((prev) => [...prev, {
-        id: msgId,
-        role: 'assistant',
-        text: result.message,
-        actions: result.actions as EnrichedAction[],
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: msgId,
+          role: "assistant",
+          text: result.message,
+          actions: result.actions as EnrichedAction[],
+        },
+      ]);
     } catch (err: any) {
-      addMessage({ role: 'assistant', text: `Error: ${err.message}` });
+      addMessage({
+        role: "assistant",
+        text: `Something went wrong: ${err.message}`,
+      });
     } finally {
       setLoading(false);
+      setTimeout(() => inputRef.current?.focus(), 50);
     }
   };
 
-  const handleExecuteAction = async (msgId: number, action: EnrichedAction, actionIndex: number) => {
+  const handleExecuteAction = async (
+    msgId: number,
+    action: EnrichedAction,
+    actionIndex: number,
+  ) => {
     if (!walletAddress) return;
-
     updateMessage(msgId, { executing: true });
 
     try {
       let txHash: string | undefined;
-      let resultText = '';
+      let resultText = "";
 
       switch (action.type) {
-
-        case 'send': {
+        case "send": {
           const prep = await transferApi.prepare({
             senderWallet: walletAddress,
             recipient: action.recipient!,
@@ -142,12 +386,11 @@ export function AIExecutor() {
             needsEscrow: prep.needsEscrow,
           });
           resultText = prep.needsEscrow
-            ? `Escrowed ${action.amount} ${action.token} — claim link sent to ${action.recipient}`
-            : `Sent ${action.amount} ${action.token} to ${action.recipient}`;
+            ? `${action.amount} ${action.token} escrowed — claim link sent to ${action.recipient}`
+            : `${action.amount} ${action.token} sent to ${action.recipient}`;
           break;
         }
-
-        case 'swap': {
+        case "swap": {
           txHash = await executeSwap(
             action.token,
             action.toToken as TokenSymbol,
@@ -159,124 +402,217 @@ export function AIExecutor() {
             tokenIn: action.token,
             tokenOut: action.toToken!,
             amountIn: action.amount,
-            amountOut: '0', // actual out unknown without pre-quote
+            amountOut: "0",
             txHash,
-            provider: 'avnu',
+            provider: "avnu",
           });
           resultText = `Swapped ${action.amount} ${action.token} → ${action.toToken}`;
           break;
         }
-
-        case 'save':
-        case 'invest':
-        case 'stake': {
-          txHash = await executeLendingDeposit(action.token, action.amount, true);
-          await lendingApi.deposit({ token: action.token, amount: action.amount, txHash });
-          resultText = `Supplied ${action.amount} ${action.token} to Vesu lending`;
+        case "save":
+        case "invest":
+        case "stake": {
+          txHash = await executeLendingDeposit(
+            action.token,
+            action.amount,
+            true,
+          );
+          await lendingApi.deposit({
+            token: action.token,
+            amount: action.amount,
+            txHash,
+          });
+          resultText = `${action.amount} ${action.token} supplied to Vesu — earning yield`;
           break;
         }
-
-        case 'unstake': {
-          // Find active lending position for this token
+        case "unstake": {
           const positions = await lendingApi.positions();
           const pos = positions.find(
-            (p) => p.token === action.token && p.status === 'active'
+            (p) => p.token === action.token && p.status === "active",
           );
-          if (!pos) throw new Error(`No active ${action.token} position to withdraw.`);
-          txHash = await executeLendingWithdraw(action.token, action.amount);
+          if (!pos)
+            throw new Error(`No active ${action.token} position found.`);
+          txHash = await executeLendingWithdraw(action.token, action.amount, true);
           await lendingApi.withdraw(pos.id, txHash);
-          resultText = `Withdrew ${action.amount} ${action.token} from Vesu`;
+          resultText = `${action.amount} ${action.token} withdrawn from Vesu`;
           break;
         }
-
         default:
-          throw new Error(`Unknown action type: ${action.type}`);
+          throw new Error(`Unknown action: ${action.type}`);
       }
 
-      toast({ type: 'success', title: resultText, txHash });
+      // Toast is the primary notification — clickable link to Starkscan
+      showToast({ type: "success", title: resultText, txHash });
       refreshBalances();
 
-      // Update that specific action as done
-      setMessages((prev) => prev.map((m) => {
-        if (m.id !== msgId || !m.actions) return m;
-        const newActions = m.actions.map((a, i) =>
-          i === actionIndex ? { ...a, _done: true } : a
-        );
-        const allDone = newActions.every((a: any) => a._done);
-        return { ...m, actions: newActions, executing: false, done: allDone };
-      }));
-
-      addMessage({ role: 'system', text: `✅ ${resultText}${txHash ? ` · [View on Starkscan](https://starkscan.co/tx/${txHash})` : ''}` });
-
+      // Mark action done inline; no extra chat message (toast handles it)
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== msgId || !m.actions) return m;
+          const newActions = m.actions.map((a, i) =>
+            i === actionIndex ? { ...a, _done: true } : a,
+          );
+          return {
+            ...m,
+            actions: newActions,
+            executing: false,
+            done: newActions.every((a) => a._done),
+          };
+        }),
+      );
     } catch (err: any) {
       updateMessage(msgId, { executing: false });
-      toast({ type: 'error', title: 'Action failed', message: err.message });
-      addMessage({ role: 'system', text: `❌ Failed: ${err.message}` });
+      // Parse common SDK errors into friendly messages
+      let errMsg = err.message ?? "Unknown error";
+      if (
+        errMsg.includes("paymaster") ||
+        errMsg.includes("gas") ||
+        errMsg.includes("fee")
+      ) {
+        const isLending = action.type === "unstake" || action.type === "save" || action.type === "invest" || action.type === "stake";
+        errMsg = isLending
+          ? "Transaction failed — Vesu lending on Sepolia may not support this token, or the paymaster couldn't cover gas. Try with STRK."
+          : "Transaction failed — make sure you have STRK to cover gas, or the paymaster may not support this token pair on Sepolia.";
+      } else if (
+        errMsg.includes("insufficient") ||
+        errMsg.includes("balance")
+      ) {
+        errMsg = `Insufficient balance for this transaction.`;
+      }
+      showToast({
+        type: "error",
+        title: "Transaction failed",
+        message: errMsg,
+      });
     }
   };
 
   const handleExecuteAll = async (msgId: number, actions: EnrichedAction[]) => {
-    const readyActions = actions.filter((a) => a.ready);
-    for (let i = 0; i < readyActions.length; i++) {
-      await handleExecuteAction(msgId, readyActions[i], actions.indexOf(readyActions[i]));
+    const ready = actions.filter((a) => a.ready && !a._done);
+    for (let i = 0; i < ready.length; i++) {
+      await handleExecuteAction(msgId, ready[i], actions.indexOf(ready[i]));
+    }
+  };
+
+  const handleQuickCommand = (cmd: (typeof QUICK_COMMANDS)[0]) => {
+    if (cmd.send) {
+      handleSend(cmd.fill);
+    } else {
+      setInput(cmd.fill);
+      inputRef.current?.focus();
     }
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-12rem)] max-h-[700px]">
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-2">
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* ── Portfolio bar ───────────────────────────────────────────────── */}
+      <PortfolioBar />
+
+      {/* ── Messages ────────────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-5 space-y-5 max-w-3xl mx-auto w-full">
         {messages.map((msg) => (
           <ChatBubble
             key={msg.id}
             msg={msg}
             balances={balances}
-            onExecuteAction={(action, idx) => handleExecuteAction(msg.id, action, idx)}
+            onExecuteAction={(action, idx) =>
+              handleExecuteAction(msg.id, action, idx)
+            }
             onExecuteAll={(actions) => handleExecuteAll(msg.id, actions)}
           />
         ))}
+
         {loading && (
-          <div className="flex items-center gap-2 text-slate-500 text-sm">
-            <span className="flex gap-1">
-              <span className="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-            </span>
-            Thinking…
+          <div className="flex items-center gap-1.5 pl-10">
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                className="w-1 h-1 rounded-full bg-zinc-600 animate-blink"
+                style={{ animationDelay: `${i * 200}ms` }}
+              />
+            ))}
           </div>
         )}
         <div ref={bottomRef} />
       </div>
 
-      {/* Examples */}
-      {messages.length <= 1 && (
-        <div className="flex flex-wrap gap-2 mb-3">
-          {EXAMPLES.map((ex) => (
+      {/* ── Quick commands + input ───────────────────────────────────────── */}
+      <div className="border-t border-surface-border bg-surface">
+        {/* Quick command chips */}
+        <div className="px-4 sm:px-8 pt-3 pb-2 flex gap-2 flex-wrap max-w-3xl mx-auto w-full">
+          {QUICK_COMMANDS.map((cmd) => (
             <button
-              key={ex}
-              onClick={() => setInput(ex)}
-              className="text-xs px-2.5 py-1.5 rounded-lg bg-surface border border-surface-border text-slate-400 hover:text-brand-400 hover:border-brand-500/50 transition-colors"
+              key={cmd.label}
+              onClick={() => handleQuickCommand(cmd)}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-card border border-surface-border text-zinc-600 hover:text-zinc-200 hover:border-zinc-700 transition-all duration-150 text-xs font-mono disabled:opacity-30"
             >
-              {ex}
+              {cmd.icon}
+              {cmd.label}
             </button>
           ))}
         </div>
-      )}
 
-      {/* Input */}
-      <div className="flex gap-2 pt-3 border-t border-surface-border">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-          placeholder='e.g. "Send 5 STRK to @alice" or "Swap 1 ETH to USDC"'
-          className="input flex-1 text-sm"
-          disabled={loading}
-        />
-        <Button onClick={handleSend} loading={loading} disabled={!input.trim()} size="md">
-          Send
-        </Button>
+        {/* Text input */}
+        <div className="px-4 sm:px-8 pb-4 flex gap-3 max-w-3xl mx-auto w-full">
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder='e.g. "send 5 STRK to alice@gmail.com" or "swap 1 ETH to USDC"'
+            className="flex-1 bg-surface-card border border-surface-border rounded-xl px-4 py-3 font-mono text-sm text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-600 transition-colors"
+            disabled={loading}
+            autoFocus
+          />
+          <button
+            onClick={() => handleSend()}
+            disabled={!input.trim() || loading}
+            className="px-5 py-3 bg-accent text-black text-sm font-bold rounded-xl hover:bg-accent-dim transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0 flex items-center gap-2"
+          >
+            {loading ? (
+              <svg
+                className="w-4 h-4 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
+              </svg>
+            ) : (
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2.5}
+                  d="M5 12h14M12 5l7 7-7 7"
+                />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -295,28 +631,61 @@ function ChatBubble({
   onExecuteAction: (action: EnrichedAction, idx: number) => void;
   onExecuteAll: (actions: EnrichedAction[]) => void;
 }) {
-  if (msg.role === 'system') {
-    return (
-      <div className="text-xs text-slate-500 text-center py-1">
-        {msg.text}
-      </div>
-    );
+  if (msg.role === "system") {
+    // System messages are just thin dividers — not shown anymore for tx results
+    // (toasts handle those). Only show for genuine system events.
+    return null;
   }
 
-  const isUser = msg.role === 'user';
+  const isUser = msg.role === "user";
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[85%] space-y-2 ${isUser ? 'items-end' : 'items-start'} flex flex-col`}>
-        <div className={`px-4 py-2.5 rounded-2xl text-sm ${
-          isUser
-            ? 'bg-brand-600/30 border border-brand-500/30 text-white rounded-br-sm'
-            : 'bg-surface-card border border-surface-border text-slate-200 rounded-bl-sm'
-        }`}>
+    <div
+      className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"} animate-fade-in`}
+    >
+      {/* AI avatar */}
+      {!isUser && (
+        <div className="w-7 h-7 rounded-lg bg-accent/10  flex items-center justify-center shrink-0 mt-0.5">
+          <svg
+            width="200"
+            height="200"
+            viewBox="0 0 200 200"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <rect width="200" height="200" rx="24" fill="#0B0B0B" />
+
+            <path
+              d="M50 60H150L50 140H150"
+              stroke="#00E5FF"
+              stroke-width="10"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+
+            <path
+              d="M60 60L140 140M140 60L60 140"
+              stroke="#00E5FF"
+              stroke-width="6"
+              stroke-linecap="round"
+            />
+          </svg>
+        </div>
+      )}
+
+      <div
+        className={`flex flex-col gap-2 max-w-[80%] ${isUser ? "items-end" : "items-start"}`}
+      >
+        <div
+          className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+            isUser
+              ? "bg-zinc-800 border border-zinc-700/80 text-white rounded-br-sm"
+              : "bg-surface-card border border-surface-border text-zinc-200 rounded-bl-sm"
+          }`}
+        >
           {msg.text}
         </div>
 
-        {/* Action cards */}
         {msg.actions && msg.actions.length > 0 && (
           <div className="w-full space-y-2">
             {msg.actions.map((action, idx) => (
@@ -328,16 +697,18 @@ function ChatBubble({
                 onExecute={() => onExecuteAction(action, idx)}
               />
             ))}
-            {msg.actions.filter((a) => a.ready).length > 1 && !msg.done && (
-              <Button
-                onClick={() => onExecuteAll(msg.actions!)}
-                loading={msg.executing}
-                className="w-full"
-                size="sm"
-              >
-                Execute All {msg.actions.filter((a) => a.ready).length} Actions
-              </Button>
-            )}
+            {msg.actions.filter((a) => a.ready && !a._done).length > 1 &&
+              !msg.done && (
+                <button
+                  onClick={() => onExecuteAll(msg.actions!)}
+                  disabled={msg.executing}
+                  className="w-full py-2.5 text-xs font-mono text-zinc-500 border border-surface-border rounded-xl hover:border-zinc-700 hover:text-zinc-200 transition-colors disabled:opacity-30"
+                >
+                  {msg.executing
+                    ? "executing…"
+                    : `confirm all ${msg.actions.filter((a) => a.ready && !a._done).length} actions`}
+                </button>
+              )}
           </div>
         )}
       </div>
@@ -353,62 +724,115 @@ function ActionCard({
   executing,
   onExecute,
 }: {
-  action: EnrichedAction & { _done?: boolean };
+  action: EnrichedAction;
   balances: Record<string, string>;
   executing: boolean;
   onExecute: () => void;
 }) {
-  const icons: Record<string, string> = {
-    send: '📤', swap: '🔄', stake: '📈', unstake: '📉', save: '💰', invest: '💎',
-  };
-
-  const available = parseFloat(balances[action.token] ?? '0');
+  const available = parseFloat(balances[action.token] ?? "0");
   const amount = parseFloat(action.amount);
   const insufficientFunds = available < amount;
-
   const canExecute = action.ready && !action._done && !insufficientFunds;
 
+  const ACTION_ICON: Record<string, string> = {
+    send: "→",
+    swap: "⇄",
+    stake: "↑",
+    unstake: "↓",
+    save: "↑",
+    invest: "↑",
+  };
+
   return (
-    <div className={`p-3 rounded-xl border text-sm ${
-      action._done
-        ? 'bg-green-500/10 border-green-500/30'
-        : action.ready
-        ? 'bg-surface border-surface-border'
-        : 'bg-red-500/10 border-red-500/20'
-    }`}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <span>{icons[action.type] ?? '⚡'}</span>
-          <div className="min-w-0">
-            <p className="text-white font-medium">
-              <span className="capitalize text-brand-400">{action.type}</span>{' '}
-              <span className="font-mono">{action.amount} {action.token}</span>
-              {action.recipient && <> → <span className="text-slate-300 truncate">{action.recipient}</span></>}
-              {action.toToken && <> → <span className="text-slate-300">{action.toToken}</span></>}
-            </p>
-            {action.warning && (
-              <p className="text-xs text-yellow-400 mt-0.5">⚠ {action.warning}</p>
-            )}
-            {insufficientFunds && !action._done && (
-              <p className="text-xs text-red-400 mt-0.5">
-                Insufficient balance ({available.toFixed(4)} {action.token} available)
-              </p>
-            )}
-          </div>
+    <div
+      className={`rounded-xl border overflow-hidden transition-colors ${
+        action._done
+          ? "border-green-500/20 bg-green-500/5"
+          : insufficientFunds
+            ? "border-red-500/20 bg-red-500/5"
+            : !action.ready
+              ? "border-zinc-800 bg-surface"
+              : "border-surface-border bg-surface-card hover:border-zinc-700"
+      }`}
+    >
+      <div className="px-4 py-3.5 flex items-center gap-4">
+        {/* Glyph */}
+        <div
+          className={`w-9 h-9 rounded-lg flex items-center justify-center text-base font-mono shrink-0 ${
+            action._done
+              ? "bg-green-500/10 text-green-400"
+              : canExecute
+                ? "bg-accent/10 text-accent"
+                : "bg-zinc-900 text-zinc-600"
+          }`}
+        >
+          {action._done ? "✓" : (ACTION_ICON[action.type] ?? "·")}
         </div>
 
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-accent font-semibold">
+              {action.type}
+            </span>
+            <span className="text-base font-mono text-white font-semibold">
+              {action.amount} {action.token}
+            </span>
+            {action.toToken && (
+              <span className="text-xs font-mono text-zinc-500">
+                → {action.toToken}
+              </span>
+            )}
+            {action.recipient && (
+              <span className="text-xs font-mono text-zinc-500 truncate max-w-[200px]">
+                → {action.recipient}
+              </span>
+            )}
+          </div>
+
+          {action.needsEscrow && !action._done && !insufficientFunds && (
+            <p className="text-xs font-mono text-zinc-600 mt-0.5">
+              escrowed · recipient gets email claim link
+            </p>
+          )}
+          {action.warning &&
+            !insufficientFunds &&
+            !action._done &&
+            !action.needsEscrow && (
+              <p className="text-xs font-mono text-yellow-600 mt-0.5">
+                {action.warning}
+              </p>
+            )}
+          {insufficientFunds && !action._done && (
+            <p className="text-xs font-mono text-red-500 mt-0.5">
+              insufficient — you have {available.toFixed(4)} {action.token}
+            </p>
+          )}
+        </div>
+
+        {/* CTA */}
         {action._done ? (
-          <span className="text-green-400 text-xs font-semibold shrink-0">Done ✓</span>
+          <span className="text-xs font-mono text-green-400 shrink-0">
+            done
+          </span>
         ) : (
-          <Button
-            size="sm"
-            variant={canExecute ? 'primary' : 'secondary'}
+          <button
             onClick={onExecute}
-            loading={executing}
-            disabled={!canExecute}
+            disabled={!canExecute || executing}
+            className={`shrink-0 px-4 py-2 rounded-lg text-xs font-mono font-bold transition-colors ${
+              canExecute && !executing
+                ? "bg-accent text-black hover:bg-accent-dim"
+                : "bg-zinc-900 text-zinc-700 border border-zinc-800 cursor-not-allowed"
+            } disabled:opacity-50`}
           >
-            {!action.ready ? 'Invalid' : insufficientFunds ? 'Low funds' : 'Execute'}
-          </Button>
+            {executing
+              ? "…"
+              : !action.ready
+                ? "invalid"
+                : insufficientFunds
+                  ? "no funds"
+                  : "confirm"}
+          </button>
         )}
       </div>
     </div>
