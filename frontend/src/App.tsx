@@ -8,7 +8,7 @@ import { AuthLayout, PublicLayout } from "./components/layout/Layout.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { DashboardPage } from "./pages/DashboardPage.js";
 import { SendPage } from "./pages/SendPage.js";
-import { StakePage } from "./pages/StakePage.js";
+import { LendingPage } from "./pages/LendingPage.js";
 import { ClaimPageContent } from "./components/claim/ClaimPage.js";
 import { config } from "./config.js";
 
@@ -53,7 +53,7 @@ export default function App() {
                 <Route element={<AuthLayout />}>
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/send" element={<SendPage />} />
-                  <Route path="/stake" element={<StakePage />} />
+                  <Route path="/lend" element={<LendingPage />} />
                 </Route>
 
                 {/* Redirects */}

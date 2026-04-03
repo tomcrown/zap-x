@@ -39,7 +39,7 @@ export function Navbar() {
           <nav className="hidden md:flex items-center gap-1">
             <NavLink to="/dashboard">Dashboard</NavLink>
             <NavLink to="/send">Send</NavLink>
-            <NavLink to="/stake">Stake</NavLink>
+            <NavLink to="/lend">Lend</NavLink>
           </nav>
         )}
 

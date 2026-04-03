@@ -16,11 +16,23 @@ import { config } from '../config/index.js';
 
 // ─── Named Pools ───────────────────────────────────────────────────────────────
 
+// Pool addresses are validator stakerAddresses (not the staking contract).
+// These come from sepoliaValidators in the Starkzap SDK.
 export const STAKING_POOLS: Record<string, { name: string; token: TokenSymbol; apy: string }> = {
-  [config.staking.strkPoolAddress]: {
-    name: 'STRK Staking Pool',
+  '0x003bc84d802c8a57cbe4eb4a6afa9b1255e907cba9377b446d6f4edf069403c5': {
+    name: 'moonli.me',
     token: 'STRK',
-    apy: '~8.5%', // Approximate — real APY is on-chain
+    apy: '~8.5%',
+  },
+  '0x068b5f8e8eb23a42ad290800f229f09b1bcc8d43537dd27a127769ffa13b59f1': {
+    name: 'Teku',
+    token: 'STRK',
+    apy: '~8.5%',
+  },
+  '0x05c85dd30df86ed1f2cfe1806417efb2cae421bffdee8110a74a3d3eb95b28d3': {
+    name: 'Nethermind',
+    token: 'STRK',
+    apy: '~8.5%',
   },
 };
 

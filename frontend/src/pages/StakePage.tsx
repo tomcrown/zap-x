@@ -84,6 +84,14 @@ export function StakePage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
+      {/* Testnet notice */}
+      {config.starknetNetwork === 'sepolia' && (
+        <div className="p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-xs flex items-center gap-2">
+          <span>⚠️</span>
+          <span><strong>Testnet mode:</strong> Staking is simulated on Sepolia — no real funds are staked. Delegation pools are only active on mainnet.</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>

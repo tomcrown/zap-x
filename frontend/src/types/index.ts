@@ -2,6 +2,24 @@ export type TokenSymbol = 'STRK' | 'ETH' | 'USDC' | 'USDT' | 'wBTC' | 'lBTC' | '
 export type TransactionStatus = 'pending' | 'confirmed' | 'failed';
 export type ClaimStatus = 'pending' | 'claimed' | 'expired' | 'cancelled';
 export type StakeStatus = 'active' | 'exiting' | 'withdrawn';
+export type LendingStatus = 'active' | 'withdrawn';
+
+export interface LendingPosition {
+  id: number;
+  user_wallet: string;
+  token: string;
+  supplied_amount: string;
+  entry_tx_hash: string | null;
+  status: LendingStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LendingStats {
+  totalSupplied: string;
+  positions: LendingPosition[];
+  projectedAnnualYield: string;
+}
 export type ActionType = 'send' | 'stake' | 'unstake' | 'swap' | 'save' | 'invest';
 
 export interface Transaction {

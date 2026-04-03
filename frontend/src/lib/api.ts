@@ -10,6 +10,8 @@ import {
   StakingPosition,
   StakingStats,
   StakingPool,
+  LendingPosition,
+  LendingStats,
   UserProfile,
   AIParseResult,
   TokenSymbol,
@@ -151,6 +153,22 @@ export const stakingApi = {
 
   recordExit: (positionId: number, txHash: string) =>
     apiClient.post('/staking/exit', { positionId, txHash }).then((r) => r.data),
+};
+
+// ─── Lending ──────────────────────────────────────────────────────────────────
+
+export const lendingApi = {
+  stats: () =>
+    apiClient.get<{ stats: LendingStats }>('/lending/stats').then((r) => r.data.stats),
+
+  positions: () =>
+    apiClient.get<{ positions: LendingPosition[] }>('/lending/positions').then((r) => r.data.positions),
+
+  deposit: (body: { token: string; amount: string; txHash: string }) =>
+    apiClient.post<{ position: LendingPosition }>('/lending/deposit', body).then((r) => r.data.position),
+
+  withdraw: (positionId: number, txHash: string) =>
+    apiClient.post('/lending/withdraw', { positionId, txHash }).then((r) => r.data),
 };
 
 // ─── AI ───────────────────────────────────────────────────────────────────────
