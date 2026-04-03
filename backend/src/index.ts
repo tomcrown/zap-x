@@ -14,6 +14,7 @@ import stakingRouter from './routes/staking.js';
 import lendingRouter from './routes/lending.js';
 import swapRouter from './routes/swap.js';
 import aiRouter from './routes/ai.js';
+import chatRouter from './routes/chat.js';
 
 // Bootstrap DB on startup
 import './db/database.js';
@@ -62,6 +63,7 @@ app.use('/api/claim', claimRouter);
 app.use('/api/staking', stakingRouter);
 app.use('/api/lending', lendingRouter);
 app.use('/api/swap', swapRouter);
+app.use('/api/chat', chatRouter);
 app.use('/api/ai', aiRouter);
 
 // ─── Error Handling ────────────────────────────────────────────────────────────

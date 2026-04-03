@@ -13,6 +13,7 @@ import {
   LendingPosition,
   LendingStats,
   SwapRecord,
+  ParsedAction,
   UserProfile,
   AIParseResult,
   TokenSymbol,
@@ -154,6 +155,20 @@ export const stakingApi = {
 
   recordExit: (positionId: number, txHash: string) =>
     apiClient.post('/staking/exit', { positionId, txHash }).then((r) => r.data),
+};
+
+// ─── Chat ─────────────────────────────────────────────────────────────────────
+
+export const chatApi = {
+  send: (message: string) =>
+    apiClient.post<{
+      success: boolean;
+      message: string;
+      confidence?: number;
+      clarification?: string;
+      warnings?: string[];
+      actions: Array<ParsedAction & { ready: boolean; recipientAddress?: string; needsEscrow?: boolean; warning?: string }>;
+    }>('/chat', { message }).then((r) => r.data),
 };
 
 // ─── Lending ──────────────────────────────────────────────────────────────────

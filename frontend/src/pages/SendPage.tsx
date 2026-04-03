@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { SendForm } from '../components/send/SendForm.js';
 import { AICommandInput } from '../components/send/AICommandInput.js';
-import { ParsedAction, TokenSymbol } from '../types/index.js';
+import { AIExecutor } from '../components/send/AIExecutor.js';
+import { ParsedAction } from '../types/index.js';
 
 export function SendPage() {
   const [activeTab, setActiveTab] = useState<'manual' | 'ai'>('manual');
@@ -55,24 +56,9 @@ export function SendPage() {
             onSuccess={() => setPrefill(undefined)}
           />
         ) : (
-          <AIActionsQueue />
+          <AIExecutor />
         )}
       </div>
-    </div>
-  );
-}
-
-function AIActionsQueue() {
-  return (
-    <div className="text-center py-12">
-      <div className="text-5xl mb-4">🤖</div>
-      <h3 className="text-lg font-bold text-white mb-2">AI Actions Queue</h3>
-      <p className="text-slate-400 text-sm max-w-sm mx-auto">
-        Use the AI Command Bar above to parse natural language commands. Parsed actions will appear here for review before execution.
-      </p>
-      <p className="text-xs text-slate-500 mt-3">
-        Try: "Send 5 STRK to @alice and stake 10 STRK"
-      </p>
     </div>
   );
 }
