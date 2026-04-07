@@ -10,14 +10,27 @@
  *   4. Returns instructions to the frontend on what transaction to execute.
  */
 
-import { config } from '../config/index.js';
-import getDb from '../db/database.js';
-import { DbTransaction, SendRequest, SendResponse, TokenSymbol, TransactionStatus } from '../models/types.js';
-import { detectRecipientType, isValidStarknetAddress } from '../utils/crypto.js';
-import { normaliseUsername } from '../utils/helpers.js';
-import { lookupByEmail, lookupByIdentifier, lookupByUsername } from './walletService.js';
-import { createClaimLink } from './claimService.js';
-import { sendClaimEmail } from './emailService.js';
+import { config } from "../config/index.js";
+import getDb from "../db/database.js";
+import {
+  DbTransaction,
+  SendRequest,
+  SendResponse,
+  TokenSymbol,
+  TransactionStatus,
+} from "../models/types.js";
+import {
+  detectRecipientType,
+  isValidStarknetAddress,
+} from "../utils/crypto.js";
+import { normaliseUsername } from "../utils/helpers.js";
+import {
+  lookupByEmail,
+  lookupByIdentifier,
+  lookupByUsername,
+} from "./walletService.js";
+import { createClaimLink } from "./claimService.js";
+import { sendClaimEmail } from "./emailService.js";
 
 // ─── Resolve recipient ─────────────────────────────────────────────────────────
 
@@ -28,14 +41,16 @@ interface ResolutionResult {
   recipientUsername?: string;
 }
 
-export async function resolveRecipient(recipient: string): Promise<ResolutionResult> {
+export async function resolveRecipient(
+  recipient: string,
+): Promise<ResolutionResult> {
   const type = detectRecipientType(recipient);
 
   switch (type) {
-    case 'address':
+    case "address":
       return { recipientAddress: recipient, needsEscrow: false };
 
-    case 'username': {
+    case "username": {
       const username = normaliseUsername(recipient);
       const user = lookupByUsername(username);
       if (user) {
@@ -45,7 +60,7 @@ export async function resolveRecipient(recipient: string): Promise<ResolutionRes
       throw new Error(`Username @${username} is not registered on Zap-X.`);
     }
 
-    case 'email': {
+    case "email": {
       const email = recipient.toLowerCase().trim();
       const user = lookupByEmail(email);
       if (user) {
@@ -60,7 +75,9 @@ export async function resolveRecipient(recipient: string): Promise<ResolutionRes
     }
 
     default:
-      throw new Error(`Cannot parse recipient "${recipient}". Use a wallet address, @username, or email.`);
+      throw new Error(
+        `Cannot parse recipient "${recipient}". Use a wallet address, @username, or email.`,
+      );
   }
 }
 
@@ -88,7 +105,9 @@ export async function prepareTransfer(req: SendRequest): Promise<{
 
   if (resolution.needsEscrow) {
     if (!config.escrow.walletAddress) {
-      throw new Error('Escrow not configured. Cannot send to recipients without wallets.');
+      throw new Error(
+        "Escrow not configured. Cannot send to recipients without wallets.",
+      );
     }
 
     return {
@@ -154,7 +173,9 @@ export async function recordConfirmedTransfer(params: {
       claimLink,
       expiresAt: claim.expires_at,
       note: params.note,
-    }).catch((err) => console.error('[EmailService] Failed to send claim email:', err));
+    }).catch((err) =>
+      console.error("[EmailService] Failed to send claim email:", err),
+    );
   }
 
   // Record in DB
@@ -171,9 +192,9 @@ export async function recordConfirmedTransfer(params: {
     params.amount,
     params.token,
     params.txHash,
-    'pending' satisfies TransactionStatus,
+    "pending" satisfies TransactionStatus,
     params.note ?? null,
-    claimLinkId ?? null
+    claimLinkId ?? null,
   );
 
   return {
@@ -182,14 +203,17 @@ export async function recordConfirmedTransfer(params: {
     claimToken,
     claimLink,
     message: params.needsEscrow
-      ? `Funds escrowed. A claim link has been sent to ${params.recipientEmail}.`
+      ? `A claim link has been sent to ${params.recipientEmail}.`
       : `Transfer of ${params.amount} ${params.token} submitted successfully.`,
   };
 }
 
 // ─── Update transaction status ─────────────────────────────────────────────────
 
-export function updateTransactionStatus(txHash: string, status: TransactionStatus): void {
+export function updateTransactionStatus(
+  txHash: string,
+  status: TransactionStatus,
+): void {
   getDb()
     .prepare("UPDATE transactions SET status = ? WHERE tx_hash = ?")
     .run(status, txHash);
@@ -200,11 +224,13 @@ export function updateTransactionStatus(txHash: string, status: TransactionStatu
 export function getTransactionHistory(walletAddress: string): DbTransaction[] {
   const db = getDb();
   return db
-    .prepare(`
+    .prepare(
+      `
       SELECT * FROM transactions
       WHERE sender_wallet = ? OR recipient_wallet = ?
       ORDER BY created_at DESC
       LIMIT 100
-    `)
+    `,
+    )
     .all(walletAddress, walletAddress) as DbTransaction[];
 }

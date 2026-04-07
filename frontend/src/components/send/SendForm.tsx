@@ -1,20 +1,20 @@
-import React, { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { transferApi } from '../../lib/api.js';
-import { executeTransfer } from '../../lib/starkzap.js';
-import { useWallet } from '../../contexts/WalletContext.js';
-import { useToast } from '../../contexts/ToastContext.js';
-import { RecipientSearch } from './RecipientSearch.js';
-import { Button } from '../common/Button.js';
-import { Select } from '../common/Input.js';
-import { TokenSymbol, ParsedAction } from '../../types/index.js';
+import React, { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { transferApi } from "../../lib/api.js";
+import { executeTransfer } from "../../lib/starkzap.js";
+import { useWallet } from "../../contexts/WalletContext.js";
+import { useToast } from "../../contexts/ToastContext.js";
+import { RecipientSearch } from "./RecipientSearch.js";
+import { Button } from "../common/Button.js";
+import { Select } from "../common/Input.js";
+import { TokenSymbol, ParsedAction } from "../../types/index.js";
 
 const TOKEN_OPTIONS = [
-  { value: 'STRK',  label: 'STRK — Starknet Token' },
-  { value: 'ETH',   label: 'ETH — Ethereum' },
-  { value: 'USDC',  label: 'USDC — USD Coin' },
-  { value: 'USDT',  label: 'USDT — Tether' },
-  { value: 'wBTC',  label: 'wBTC — Wrapped Bitcoin' },
+  { value: "STRK", label: "STRK — Starknet Token" },
+  { value: "ETH", label: "ETH — Ethereum" },
+  { value: "USDC", label: "USDC — USD Coin" },
+  { value: "USDT", label: "USDT — Tether" },
+  { value: "wBTC", label: "wBTC — Wrapped Bitcoin" },
 ];
 
 interface Props {
@@ -27,17 +27,19 @@ export function SendForm({ prefill, onSuccess }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [recipient, setRecipient] = useState(prefill?.recipient ?? '');
+  const [recipient, setRecipient] = useState(prefill?.recipient ?? "");
   const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
-  const [amount, setAmount] = useState(prefill?.amount ?? '');
-  const [token, setToken] = useState<TokenSymbol>((prefill?.token ?? 'STRK') as TokenSymbol);
-  const [note, setNote] = useState(prefill?.note ?? '');
+  const [amount, setAmount] = useState(prefill?.amount ?? "");
+  const [token, setToken] = useState<TokenSymbol>(
+    (prefill?.token ?? "STRK") as TokenSymbol,
+  );
+  const [note, setNote] = useState(prefill?.note ?? "");
   const [gasless, setGasless] = useState(true);
-  const [step, setStep] = useState<'form' | 'confirming' | 'done'>('form');
-  const [txHash, setTxHash] = useState('');
-  const [claimLink, setClaimLink] = useState('');
+  const [step, setStep] = useState<"form" | "confirming" | "done">("form");
+  const [txHash, setTxHash] = useState("");
+  const [claimLink, setClaimLink] = useState("");
 
-  const availableBalance = parseFloat(balances[token] ?? '0');
+  const availableBalance = parseFloat(balances[token] ?? "0");
 
   const handleMax = () => {
     setAmount(availableBalance.toFixed(6));
@@ -45,11 +47,12 @@ export function SendForm({ prefill, onSuccess }: Props) {
 
   const sendMutation = useMutation({
     mutationFn: async () => {
-      if (!walletAddress) throw new Error('Wallet not connected.');
-      if (!amount || parseFloat(amount) <= 0) throw new Error('Enter a valid amount.');
-      if (!recipient.trim()) throw new Error('Enter a recipient.');
+      if (!walletAddress) throw new Error("Wallet not connected.");
+      if (!amount || parseFloat(amount) <= 0)
+        throw new Error("Enter a valid amount.");
+      if (!recipient.trim()) throw new Error("Enter a recipient.");
 
-      setStep('confirming');
+      setStep("confirming");
 
       // Step 1: Ask backend to resolve recipient and get target address
       const prep = await transferApi.prepare({
@@ -90,34 +93,44 @@ export function SendForm({ prefill, onSuccess }: Props) {
       return confirmed;
     },
     onSuccess: (data) => {
-      setStep('done');
+      setStep("done");
       toast({
-        type: 'success',
-        title: 'Transfer submitted!',
+        type: "success",
+        title: "Transfer submitted!",
         message: data.message,
         txHash: data.txHash,
       });
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['claim-links'] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["claim-links"] });
       onSuccess?.();
     },
     onError: (err: Error) => {
-      setStep('form');
-      toast({ type: 'error', title: 'Transfer failed', message: err.message });
+      setStep("form");
+      toast({ type: "error", title: "Transfer failed", message: err.message });
     },
   });
 
-  if (step === 'done') {
+  if (step === "done") {
     return (
       <div className="text-center py-8 animate-fade-in">
         <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/20 flex items-center justify-center">
-          <svg className="w-8 h-8 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          <svg
+            className="w-8 h-8 text-green-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M5 13l4 4L19 7"
+            />
           </svg>
         </div>
         <h3 className="text-xl font-bold text-white mb-2">Transfer Sent!</h3>
         <p className="text-slate-400 text-sm mb-4">
-          {amount} {token} has been {claimLink ? 'escrowed' : 'sent'}
+          {amount} {token} has been {claimLink ? "delivered" : "sent"}
         </p>
         {txHash && (
           <a
@@ -131,26 +144,32 @@ export function SendForm({ prefill, onSuccess }: Props) {
         )}
         {claimLink && (
           <div className="p-4 bg-surface rounded-xl border border-brand-500/30 text-left mb-4">
-            <p className="text-xs font-semibold text-brand-400 mb-2">📎 Share this claim link with the recipient</p>
-            <p className="text-xs font-mono text-slate-300 break-all mb-3">{claimLink}</p>
+            <p className="text-xs font-semibold text-brand-400 mb-2">
+              📎 Share this claim link with the recipient
+            </p>
+            <p className="text-xs font-mono text-slate-300 break-all mb-3">
+              {claimLink}
+            </p>
             <button
               onClick={() => navigator.clipboard.writeText(claimLink)}
               className="w-full py-2 rounded-lg bg-brand-600/20 border border-brand-500/30 text-xs text-brand-400 hover:bg-brand-600/30 transition-colors font-semibold"
             >
               Copy claim link
             </button>
-            <p className="text-xs text-slate-500 mt-2">They can claim their funds without a wallet — Privy handles it.</p>
+            <p className="text-xs text-slate-500 mt-2">
+              They can claim their funds without a wallet — Privy handles it.
+            </p>
           </div>
         )}
         <Button
           variant="secondary"
           onClick={() => {
-            setStep('form');
-            setRecipient('');
-            setAmount('');
-            setNote('');
-            setTxHash('');
-            setClaimLink('');
+            setStep("form");
+            setRecipient("");
+            setAmount("");
+            setNote("");
+            setTxHash("");
+            setClaimLink("");
           }}
         >
           Send Another
@@ -170,7 +189,9 @@ export function SendForm({ prefill, onSuccess }: Props) {
       {/* Amount + Token */}
       <div className="flex gap-3">
         <div className="flex-1">
-          <label className="block text-sm font-medium text-slate-300 mb-1.5">Amount</label>
+          <label className="block text-sm font-medium text-slate-300 mb-1.5">
+            Amount
+          </label>
           <div className="relative">
             <input
               type="number"
@@ -189,7 +210,10 @@ export function SendForm({ prefill, onSuccess }: Props) {
             </button>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Available: <span className="font-mono">{availableBalance.toFixed(4)} {token}</span>
+            Available:{" "}
+            <span className="font-mono">
+              {availableBalance.toFixed(4)} {token}
+            </span>
           </p>
         </div>
 
@@ -231,24 +255,40 @@ export function SendForm({ prefill, onSuccess }: Props) {
           <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
         </div>
         <div>
-          <p className="text-sm font-medium text-slate-200">Gasless Transaction</p>
-          <p className="text-xs text-slate-500">Powered by AVNU Paymaster — no ETH/STRK needed for gas</p>
+          <p className="text-sm font-medium text-slate-200">
+            Gasless Transaction
+          </p>
+          <p className="text-xs text-slate-500">
+            Powered by AVNU Paymaster — no ETH/STRK needed for gas
+          </p>
         </div>
       </label>
 
       <Button
         onClick={() => sendMutation.mutate()}
-        loading={sendMutation.isPending || step === 'confirming'}
+        loading={sendMutation.isPending || step === "confirming"}
         disabled={!recipient.trim() || !amount || parseFloat(amount) <= 0}
         className="w-full"
         size="lg"
         icon={
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+            />
           </svg>
         }
       >
-        {step === 'confirming' ? 'Waiting for signature…' : `Send ${amount || '0'} ${token}`}
+        {step === "confirming"
+          ? "Waiting for signature…"
+          : `Send ${amount || "0"} ${token}`}
       </Button>
     </div>
   );

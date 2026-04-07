@@ -124,7 +124,7 @@ async function enrichAction(
         ready: true,
         needsEscrow: true,
         warning:
-          "Recipient has no Zap-X wallet — funds will be escrowed and they'll receive a claim link by email.",
+          "Recipient has no Zap-X wallet — they'll receive a claim link by email (Check spam folder).",
       };
     }
     if (isAddress) {

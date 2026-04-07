@@ -365,7 +365,7 @@ export function AIExecutor() {
             needsEscrow: prep.needsEscrow,
           });
           resultText = prep.needsEscrow
-            ? `${action.amount} ${action.token} escrowed — claim link sent to ${action.recipient}`
+            ? `${action.amount} ${action.token}. claim link sent to ${action.recipient} (Check spam folder)`
             : `${action.amount} ${action.token} sent to ${action.recipient}`;
           break;
         }
@@ -888,7 +888,7 @@ function ActionCard({
 
           {action.needsEscrow && !action._done && !insufficientFunds && (
             <p className="text-xs font-mono text-zinc-600 mt-0.5">
-              escrowed · recipient gets email claim link
+              recipient gets email claim link, check spam folder.
             </p>
           )}
           {action.warning &&
