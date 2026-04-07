@@ -109,6 +109,32 @@ function initSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_staking_wallet ON staking_positions(user_wallet);
     CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+    CREATE TABLE IF NOT EXISTS dca_records (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_wallet       TEXT NOT NULL,
+      sell_token        TEXT NOT NULL,
+      buy_token         TEXT NOT NULL,
+      amount_per_cycle  TEXT NOT NULL,
+      frequency         TEXT NOT NULL,
+      order_address     TEXT,
+      tx_hash           TEXT NOT NULL,
+      status            TEXT NOT NULL DEFAULT 'active',
+      created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS bridge_records (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_wallet TEXT NOT NULL,
+      token       TEXT NOT NULL,
+      amount      TEXT NOT NULL,
+      from_chain  TEXT NOT NULL DEFAULT 'ethereum',
+      tx_hash     TEXT NOT NULL,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_dca_wallet ON dca_records(user_wallet);
+    CREATE INDEX IF NOT EXISTS idx_bridge_wallet ON bridge_records(user_wallet);
   `);
 
   // Migrations: add columns that may not exist in older DBs

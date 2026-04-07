@@ -8,7 +8,7 @@
  * SDK Docs: https://docs.starknet.io/build/starkzap/
  */
 
-import { StarkZap, Amount, ChainId, getPresets } from "starkzap";
+import { StarkZap, Amount, ChainId, getPresets, ExternalChain, ConnectedEthereumWallet, EthereumNetwork } from "starkzap";
 import { CallData, uint256, RpcProvider } from "starknet";
 import type { TokenSymbol } from "../types/index.js";
 
@@ -556,6 +556,251 @@ export async function getPoolPosition(
     rewards: pos.rewards?.toUnit() ?? "0",
     total: pos.total?.toUnit() ?? "0",
   };
+}
+
+// ─── Bridge (Ethereum → Starknet) ────────────────────────────────────────────
+
+export interface BridgeTokenInfo {
+  symbol: string;
+  name: string;
+  decimals: number;
+  protocol: string;
+  raw: any; // full BridgeToken object passed back to deposit()
+}
+
+/**
+ * Fetch available Ethereum → Starknet bridge tokens for the current network.
+ * Requires ethers to be installed (it is — checked node_modules).
+ */
+export async function getBridgeTokens(): Promise<BridgeTokenInfo[]> {
+  const sdk = getStarkZap();
+  const tokens = await sdk.getBridgingTokens(ExternalChain.ETHEREUM);
+  return tokens.map((t: any) => ({
+    symbol: t.symbol,
+    name: t.name,
+    decimals: t.decimals,
+    protocol: t.protocol,
+    raw: t,
+  }));
+}
+
+/**
+ * Connect to the user's MetaMask (EIP-1193) Ethereum wallet.
+ * Auto-switches MetaMask to the correct Ethereum network (Sepolia for testnet, Mainnet for mainnet).
+ * Returns a ConnectedEthereumWallet the SDK can use for bridging.
+ */
+export async function connectEthereumWallet(): Promise<any> {
+  const provider = (window as any).ethereum;
+  if (!provider) throw new Error("MetaMask not found. Install MetaMask to bridge from Ethereum.");
+
+  // Request account access — opens MetaMask if not already connected
+  const accounts: string[] = await provider.request({ method: "eth_requestAccounts" });
+  if (!accounts.length) throw new Error("No Ethereum account found in MetaMask.");
+
+  // Determine which Ethereum network we need based on Starknet network
+  const isSepolia = _chainId !== ChainId.MAINNET;
+  const requiredChainId = isSepolia ? 11155111 : 1; // Ethereum Sepolia or Mainnet
+  const requiredChainHex = "0x" + requiredChainId.toString(16);
+
+  // Check current chain
+  const currentChainHex: string = await provider.request({ method: "eth_chainId" });
+  const currentChainId = Number(BigInt(currentChainHex));
+
+  if (currentChainId !== requiredChainId) {
+    try {
+      // Ask MetaMask to switch to the required network
+      await provider.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: requiredChainHex }],
+      });
+    } catch (switchErr: any) {
+      // Chain not added in MetaMask (error 4902) — add Sepolia automatically
+      if (switchErr.code === 4902 && isSepolia) {
+        await provider.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: requiredChainHex,
+            chainName: "Ethereum Sepolia",
+            nativeCurrency: { name: "SepoliaETH", symbol: "ETH", decimals: 18 },
+            rpcUrls: ["https://rpc.sepolia.org"],
+            blockExplorerUrls: ["https://sepolia.etherscan.io"],
+          }],
+        });
+      } else {
+        throw new Error(
+          isSepolia
+            ? "Please switch MetaMask to Ethereum Sepolia testnet to bridge."
+            : "Please switch MetaMask to Ethereum Mainnet to bridge."
+        );
+      }
+    }
+  }
+
+  return ConnectedEthereumWallet.from(
+    { chain: ExternalChain.ETHEREUM, provider, address: accounts[0], chainId: requiredChainId },
+    _chainId,
+  );
+}
+
+/**
+ * Execute a bridge deposit from Ethereum to Starknet.
+ * @param bridgeToken  - raw BridgeToken from getBridgeTokens()
+ * @param amount       - human-readable amount string e.g. "10"
+ * @param recipient    - Starknet wallet address to receive funds
+ * @param ethWallet    - ConnectedEthereumWallet from connectEthereumWallet()
+ * @returns Ethereum transaction hash
+ */
+export async function executeBridge(
+  bridgeToken: any,
+  amount: string,
+  recipient: string,
+  ethWallet: any,
+): Promise<string> {
+  const wallet = getConnectedWallet();
+  // bridgeToken.raw is the actual BridgeToken object from the SDK
+  const rawToken = bridgeToken.raw ?? bridgeToken;
+  // Use the token's decimals for Amount.parse (ETH=18, USDC=6, etc.)
+  const decimals: number = rawToken.decimals ?? bridgeToken.decimals;
+  const symbol: string = rawToken.symbol ?? bridgeToken.symbol;
+  const parsedAmount = Amount.parse(amount, decimals, symbol);
+  const tx = await wallet.deposit(recipient, parsedAmount, rawToken, ethWallet);
+  return (tx as any).hash ?? (tx as any).transactionHash ?? String(tx);
+}
+
+// ─── DCA ─────────────────────────────────────────────────────────────────────
+
+export interface DcaCreateParams {
+  sellToken: TokenSymbol;
+  buyToken: TokenSymbol;
+  amountPerCycle: string;   // human-readable e.g. "10"
+  frequency: string;        // ISO 8601: "P1D", "P7D", "P1M"
+  cycles?: number;          // total cycles (optional)
+}
+
+/**
+ * Create a DCA order on AVNU. Sells `sellToken` to buy `buyToken` on schedule.
+ * Returns { txHash, orderAddress? }
+ */
+export async function executeDcaCreate(params: DcaCreateParams): Promise<{ txHash: string; orderAddress?: string }> {
+  const wallet = getConnectedWallet();
+  await wallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" as any });
+
+  const sellTokenObj = getToken(params.sellToken);
+  const buyTokenObj  = getToken(params.buyToken);
+
+  const amountPerCycle = Amount.parse(params.amountPerCycle, sellTokenObj as any);
+  // totalAmount = amountPerCycle * cycles (or 100 cycles if unspecified)
+  const cycles = params.cycles ?? 100;
+  const totalBase = amountPerCycle.toBase() * BigInt(cycles);
+  const totalAmount = Amount.fromRaw(totalBase, sellTokenObj as any);
+
+  const result = await withFeeFallback(
+    (opts) => wallet.dca().create(
+      {
+        sellToken: sellTokenObj as any,
+        buyToken: buyTokenObj as any,
+        sellAmount: totalAmount,
+        sellAmountPerCycle: amountPerCycle,
+        frequency: params.frequency,
+      },
+      opts as any,
+    ),
+    true,
+  );
+
+  const txHash: string = (result as any).transaction_hash ?? (result as any).hash;
+  return { txHash };
+}
+
+/** List active DCA orders from AVNU for the current wallet. */
+export async function getDcaOrders(): Promise<any[]> {
+  if (!_wallet) return [];
+  const wallet = getConnectedWallet();
+  try {
+    const page = await wallet.dca().getOrders({ status: "ACTIVE" });
+    return page.content ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Cancel a DCA order by its on-chain orderAddress. */
+export async function executeDcaCancel(orderAddress: string): Promise<string> {
+  const wallet = getConnectedWallet();
+  const result = await withFeeFallback(
+    (opts) => wallet.dca().cancel({ orderAddress }, opts as any),
+    true,
+  );
+  return (result as any).transaction_hash ?? (result as any).hash;
+}
+
+// ─── Borrow / Repay (Vesu) ───────────────────────────────────────────────────
+
+/**
+ * Get the maximum borrowable amount for a given collateral/debt pair.
+ * Returns human-readable string, or "0" if unavailable.
+ */
+export async function getBorrowLimit(
+  collateralToken: TokenSymbol,
+  debtToken: TokenSymbol,
+): Promise<string> {
+  if (!_wallet) return "0";
+  const wallet = getConnectedWallet();
+  const colObj  = getToken(collateralToken);
+  const debtObj = getToken(debtToken);
+  try {
+    const maxBase = await wallet.lending().getMaxBorrowAmount({
+      collateralToken: colObj as any,
+      debtToken: debtObj as any,
+    });
+    return Amount.fromRaw(maxBase, debtObj as any).toUnit();
+  } catch {
+    return "0";
+  }
+}
+
+export async function executeBorrow(
+  collateralToken: TokenSymbol,
+  debtToken: TokenSymbol,
+  amount: string,
+  gasless?: boolean,
+): Promise<string> {
+  const wallet   = getConnectedWallet();
+  const colObj   = getToken(collateralToken);
+  const debtObj  = getToken(debtToken);
+  await wallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" as any });
+
+  const parsedAmount = Amount.parse(amount, debtObj as any);
+  const result = await withFeeFallback(
+    (opts) => wallet.lending().borrow(
+      { collateralToken: colObj as any, debtToken: debtObj as any, amount: parsedAmount },
+      opts as any,
+    ),
+    !!gasless,
+  );
+  return (result as any).hash ?? (result as any).transaction_hash;
+}
+
+export async function executeRepay(
+  collateralToken: TokenSymbol,
+  debtToken: TokenSymbol,
+  amount: string,
+  gasless?: boolean,
+): Promise<string> {
+  const wallet  = getConnectedWallet();
+  const colObj  = getToken(collateralToken);
+  const debtObj = getToken(debtToken);
+  await wallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" as any });
+
+  const parsedAmount = Amount.parse(amount, debtObj as any);
+  const result = await withFeeFallback(
+    (opts) => wallet.lending().repay(
+      { collateralToken: colObj as any, debtToken: debtObj as any, amount: parsedAmount },
+      opts as any,
+    ),
+    !!gasless,
+  );
+  return (result as any).hash ?? (result as any).transaction_hash;
 }
 
 // ─── Claim Staking Rewards ────────────────────────────────────────────────────

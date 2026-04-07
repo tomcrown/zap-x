@@ -37,6 +37,10 @@ const SUPPORTED_ACTIONS: ActionType[] = [
   "swap",
   "save",
   "invest",
+  "bridge",
+  "dca",
+  "borrow",
+  "repay",
 ];
 
 let _genAI: GoogleGenerativeAI | null = null;
@@ -63,16 +67,26 @@ Action schemas:
 - invest:  { type: "invest",  amount: string, token: TokenSymbol }
 - stake:   { type: "stake",   amount: string, token: TokenSymbol }
 - unstake: { type: "unstake", amount: string, token: TokenSymbol }
+- bridge:  { type: "bridge",  amount: string, token: TokenSymbol, fromChain: "ethereum" }
+- dca:     { type: "dca",     amount: string, token: TokenSymbol, toToken: TokenSymbol, frequency: string (ISO 8601: "P1D"=daily, "P7D"=weekly, "P1M"=monthly), cycles?: number }
+- borrow:  { type: "borrow",  amount: string, token: TokenSymbol, collateralToken: TokenSymbol }
+- repay:   { type: "repay",   amount: string, token: TokenSymbol, collateralToken: TokenSymbol }
 
 Rules:
-1. Extract ALL actions from the command. Users can chain multiple: "send X and swap Y" → 2 actions.
+1. Extract ALL actions from the command. Users can chain multiple.
 2. Preserve recipients exactly — emails, @handles, 0x addresses.
 3. "save", "earn", "lend", "supply", "deposit" → use "save" type.
 4. "withdraw", "unstake", "pull out", "take out", "redeem" → use "unstake" type. If no amount is given, set amount to "0".
 5. BTC / Bitcoin → "wBTC" unless user says lBTC or tBTC.
 6. Ambiguous token → default "STRK".
 7. Missing amount → set "0" and note in clarification.
-8. Return ONLY valid JSON. No markdown fences, no explanation text.
+8. "bridge X TOKEN from Ethereum" → type "bridge", fromChain "ethereum".
+9. "bridge X and send to email" → two actions: bridge then send.
+10. "bridge X and save it" → two actions: bridge then save.
+11. DCA frequency: "daily"→"P1D", "weekly"/"every week"/"every monday"→"P7D", "monthly"→"P1M". "buy X USDC every week" → dca with token=STRK (sell), toToken=USDC (buy), amount=X.
+12. "borrow X TOKEN" → borrow, default collateralToken="STRK" unless user specifies.
+13. "repay X TOKEN" → repay, default collateralToken="STRK".
+14. Return ONLY valid JSON. No markdown fences, no explanation text.
 
 Response format:
 {
@@ -152,6 +166,18 @@ const LOCAL_STAKE_RE =
 const LOCAL_UNSTAKE_RE =
   /^(?:unstake|unlock|withdraw|pull\s+out|take\s+out|redeem)\s+(?:my\s+)?(?:([\d.]+)\s+)?(STRK|ETH|USDC|USDT)(?:\s+(?:position|funds|savings|deposit|balance))?$/i;
 
+const LOCAL_BRIDGE_RE =
+  /^bridge\s+([\d.]+)\s*(USDC|ETH|STRK|USDT|wBTC)\s+from\s+(?:ethereum|eth)(?:\s+to\s+starknet)?$/i;
+
+const LOCAL_DCA_RE =
+  /^(?:buy|dca|set\s+up\s+(?:a\s+)?dca(?:\s+for)?)\s+([\d.]+)\s*(USDC|ETH|STRK|USDT|wBTC)\s+(?:worth\s+of\s+(STRK|ETH|USDC|USDT|wBTC)\s+)?(?:every\s+)?(daily|weekly|monthly|every\s+day|every\s+week|every\s+monday|every\s+month)$/i;
+
+const LOCAL_BORROW_RE =
+  /^borrow\s+([\d.]+)\s*(STRK|ETH|USDC|USDT)(?:\s+(?:using|against|with)\s+(STRK|ETH|USDC|USDT))?$/i;
+
+const LOCAL_REPAY_RE =
+  /^repay\s+([\d.]+)\s*(STRK|ETH|USDC|USDT)(?:\s+(?:using|with|from)\s+(STRK|ETH|USDC|USDT))?$/i;
+
 function tryLocalParse(input: string): AIParseResult | null {
   let m: RegExpMatchArray | null;
 
@@ -201,6 +227,49 @@ function tryLocalParse(input: string): AIParseResult | null {
   if (m) {
     return {
       actions: [{ type: "unstake", amount: m[1] ?? "0", token: normaliseToken(m[2]) }],
+      original: input,
+      confidence: 0.97,
+    };
+  }
+
+  m = input.match(LOCAL_BRIDGE_RE);
+  if (m) {
+    return {
+      actions: [{ type: "bridge", amount: m[1], token: normaliseToken(m[2]), fromChain: "ethereum" }],
+      original: input,
+      confidence: 0.97,
+    };
+  }
+
+  m = input.match(LOCAL_DCA_RE);
+  if (m) {
+    const freqRaw = m[4].toLowerCase().replace(/\s+/g, " ");
+    const frequency =
+      freqRaw === "daily" || freqRaw === "every day" ? "P1D" :
+      freqRaw === "monthly" || freqRaw === "every month" ? "P1M" : "P7D";
+    const buyToken = m[3] ? normaliseToken(m[3]) : normaliseToken(m[2]);
+    // "buy 10 USDC every week" → sell STRK to buy USDC; token=sell, toToken=buy
+    const sellToken = buyToken === "STRK" ? "USDC" as const : "STRK" as const;
+    return {
+      actions: [{ type: "dca", amount: m[1], token: sellToken, toToken: buyToken, frequency }],
+      original: input,
+      confidence: 0.95,
+    };
+  }
+
+  m = input.match(LOCAL_BORROW_RE);
+  if (m) {
+    return {
+      actions: [{ type: "borrow", amount: m[1], token: normaliseToken(m[2]), collateralToken: m[3] ? normaliseToken(m[3]) : "STRK" }],
+      original: input,
+      confidence: 0.97,
+    };
+  }
+
+  m = input.match(LOCAL_REPAY_RE);
+  if (m) {
+    return {
+      actions: [{ type: "repay", amount: m[1], token: normaliseToken(m[2]), collateralToken: m[3] ? normaliseToken(m[3]) : "STRK" }],
       original: input,
       confidence: 0.97,
     };

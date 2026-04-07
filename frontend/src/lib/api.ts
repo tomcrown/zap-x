@@ -208,6 +208,29 @@ export const swapApi = {
     apiClient.post<{ swap: SwapRecord }>('/swap/record', body).then((r) => r.data.swap),
 };
 
+// ─── DCA ──────────────────────────────────────────────────────────────────────
+
+export const dcaApi = {
+  orders: () =>
+    apiClient.get<{ orders: any[] }>('/dca/orders').then((r) => r.data.orders),
+
+  record: (body: { sellToken: string; buyToken: string; amountPerCycle: string; frequency: string; txHash: string; orderAddress?: string }) =>
+    apiClient.post<{ success: boolean; order: any }>('/dca/record', body).then((r) => r.data),
+
+  cancel: (orderAddress: string, txHash: string) =>
+    apiClient.post('/dca/cancel', { orderAddress, txHash }).then((r) => r.data),
+};
+
+// ─── Bridge ───────────────────────────────────────────────────────────────────
+
+export const bridgeApi = {
+  history: () =>
+    apiClient.get<{ records: any[] }>('/bridge/history').then((r) => r.data.records),
+
+  record: (body: { token: string; amount: string; fromChain: string; txHash: string }) =>
+    apiClient.post<{ success: boolean; record: any }>('/bridge/record', body).then((r) => r.data),
+};
+
 // ─── AI ───────────────────────────────────────────────────────────────────────
 
 export const aiApi = {

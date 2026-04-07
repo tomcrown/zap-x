@@ -5,12 +5,28 @@
  */
 
 import { useState, useRef, useEffect } from "react";
-import { chatApi, transferApi, swapApi, lendingApi } from "../../lib/api.js";
+import {
+  chatApi,
+  transferApi,
+  swapApi,
+  lendingApi,
+  dcaApi,
+  bridgeApi,
+} from "../../lib/api.js";
 import {
   executeTransfer,
   executeSwap,
   executeLendingDeposit,
   executeLendingWithdraw,
+  executeDcaCreate,
+  executeDcaCancel,
+  executeBorrow,
+  executeRepay,
+  getBorrowLimit,
+  getBridgeTokens,
+  connectEthereumWallet,
+  executeBridge,
+  getDcaOrders,
 } from "../../lib/starkzap.js";
 import { useWallet } from "../../contexts/WalletContext.js";
 import { useToast } from "../../contexts/ToastContext.js";
@@ -79,7 +95,7 @@ const QUICK_COMMANDS = [
     send: false,
   },
   {
-    label: "Lend",
+    label: "Save",
     icon: (
       <svg
         className="w-3.5 h-3.5"
@@ -95,29 +111,10 @@ const QUICK_COMMANDS = [
         />
       </svg>
     ),
-    fill: "Lend  USDC",
+    fill: "Save  STRK",
     send: false,
   },
-  {
-    label: "Balance",
-    icon: (
-      <svg
-        className="w-3.5 h-3.5"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
-        />
-      </svg>
-    ),
-    fill: "Show my balance",
-    send: true,
-  },
+
   {
     label: "History",
     icon: (
@@ -214,24 +211,6 @@ function PortfolioBar() {
         </div>
       </div>
 
-      {/* Secondary tokens */}
-      <div className="flex items-center justify-center gap-4 sm:gap-8 mb-4">
-        {[
-          { label: "ETH", val: ethBal },
-          { label: "USDC", val: usdcBal },
-          { label: "BTC", val: btcBal },
-        ].map(({ label, val }) => (
-          <div key={label} className="text-center">
-            <p className="text-xs font-mono text-zinc-700">{label}</p>
-            <p
-              className={`text-sm font-mono font-semibold mt-0.5 ${val > 0 ? "text-zinc-300" : "text-zinc-800"}`}
-            >
-              {val.toFixed(4)}
-            </p>
-          </div>
-        ))}
-      </div>
-
       {/* Wallet address + actions */}
       <div className="flex items-center justify-center gap-3">
         {walletAddress && (
@@ -295,7 +274,7 @@ export function AIExecutor() {
     {
       id: nextId(),
       role: "assistant",
-      text: `Hey ${greeting} — ready to move assets. Send to emails, swap, lend, or just ask me anything.`,
+      text: `Hey ${greeting} — ready to move assets. Send to emails or wallet addresses, swap, save, or just ask me anything.`,
     },
   ]);
   const [input, setInput] = useState("");
@@ -432,9 +411,97 @@ export function AIExecutor() {
           );
           if (!pos)
             throw new Error(`No active ${action.token} position found.`);
-          txHash = await executeLendingWithdraw(action.token, action.amount, true);
+          txHash = await executeLendingWithdraw(
+            action.token,
+            action.amount,
+            true,
+          );
           await lendingApi.withdraw(pos.id, txHash);
           resultText = `${action.amount} ${action.token} withdrawn from Vesu`;
+          break;
+        }
+        case "bridge": {
+          // Step 1: Connect MetaMask + auto-switch to correct Ethereum network
+          const ethWallet = await connectEthereumWallet();
+          // Step 2: Fetch supported bridge tokens and find the requested one
+          const bridgeTokens = await getBridgeTokens();
+          const bridgeToken = bridgeTokens.find(
+            (t) => t.symbol.toUpperCase() === action.token.toUpperCase(),
+          );
+          if (!bridgeToken)
+            throw new Error(
+              `${action.token} is not available for bridging from Ethereum on this network. ` +
+                `Supported: ${bridgeTokens.map((t) => t.symbol).join(", ")}`,
+            );
+          // Step 3: Execute the bridge deposit
+          const ethTxHash = await executeBridge(
+            bridgeToken,
+            action.amount,
+            walletAddress,
+            ethWallet,
+          );
+          await bridgeApi.record({
+            token: action.token,
+            amount: action.amount,
+            fromChain: action.fromChain ?? "ethereum",
+            txHash: ethTxHash,
+          });
+          txHash = ethTxHash;
+          resultText = `${action.amount} ${action.token} bridge initiated from Ethereum → Starknet. Funds arrive in ~10 min.`;
+          break;
+        }
+        case "dca": {
+          const dcaResult = await executeDcaCreate({
+            sellToken: action.token,
+            buyToken: action.toToken as any,
+            amountPerCycle: action.amount,
+            frequency: action.frequency ?? "P7D",
+            cycles: action.cycles,
+          });
+          await dcaApi.record({
+            sellToken: action.token,
+            buyToken: action.toToken!,
+            amountPerCycle: action.amount,
+            frequency: action.frequency ?? "P7D",
+            txHash: dcaResult.txHash,
+            orderAddress: dcaResult.orderAddress,
+          });
+          txHash = dcaResult.txHash;
+          const freqLabel =
+            action.frequency === "P1D"
+              ? "daily"
+              : action.frequency === "P1M"
+                ? "monthly"
+                : "weekly";
+          resultText = `DCA set up — selling ${action.amount} ${action.token} → ${action.toToken} ${freqLabel}`;
+          break;
+        }
+        case "borrow": {
+          const collateral = (action.collateralToken ?? "STRK") as any;
+          const limit = await getBorrowLimit(collateral, action.token);
+          if (parseFloat(limit) < parseFloat(action.amount)) {
+            throw new Error(
+              `Borrow limit is ${parseFloat(limit).toFixed(4)} ${action.token}. You requested ${action.amount}.`,
+            );
+          }
+          txHash = await executeBorrow(
+            collateral,
+            action.token,
+            action.amount,
+            true,
+          );
+          resultText = `Borrowed ${action.amount} ${action.token} against ${collateral} collateral`;
+          break;
+        }
+        case "repay": {
+          const collateral = (action.collateralToken ?? "STRK") as any;
+          txHash = await executeRepay(
+            collateral,
+            action.token,
+            action.amount,
+            true,
+          );
+          resultText = `Repaid ${action.amount} ${action.token}`;
           break;
         }
         default:
@@ -469,7 +536,11 @@ export function AIExecutor() {
         errMsg.includes("gas") ||
         errMsg.includes("fee")
       ) {
-        const isLending = action.type === "unstake" || action.type === "save" || action.type === "invest" || action.type === "stake";
+        const isLending =
+          action.type === "unstake" ||
+          action.type === "save" ||
+          action.type === "invest" ||
+          action.type === "stake";
         errMsg = isLending
           ? "Transaction failed — Vesu lending on Sepolia may not support this token, or the paymaster couldn't cover gas. Try with STRK."
           : "Transaction failed — make sure you have STRK to cover gas, or the paymaster may not support this token pair on Sepolia.";
@@ -566,7 +637,7 @@ export function AIExecutor() {
                 handleSend();
               }
             }}
-            placeholder='e.g. "send 5 STRK to alice@gmail.com" or "swap 1 ETH to USDC"'
+            placeholder='e.g. "send 5 STRK to alice@gmail.com" or "swap 1 STRK to USDC"'
             className="flex-1 bg-surface-card border border-surface-border rounded-xl px-4 py-3 font-mono text-sm text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-600 transition-colors"
             disabled={loading}
             autoFocus
@@ -729,9 +800,11 @@ function ActionCard({
   executing: boolean;
   onExecute: () => void;
 }) {
+  // Bridge funds come from the Ethereum wallet, not the Starknet wallet — skip balance check
+  const isBridge = action.type === "bridge";
   const available = parseFloat(balances[action.token] ?? "0");
   const amount = parseFloat(action.amount);
-  const insufficientFunds = available < amount;
+  const insufficientFunds = !isBridge && available < amount;
   const canExecute = action.ready && !action._done && !insufficientFunds;
 
   const ACTION_ICON: Record<string, string> = {
@@ -741,6 +814,10 @@ function ActionCard({
     unstake: "↓",
     save: "↑",
     invest: "↑",
+    bridge: "⇌",
+    dca: "⟳",
+    borrow: "↓",
+    repay: "↑",
   };
 
   return (
@@ -786,6 +863,25 @@ function ActionCard({
             {action.recipient && (
               <span className="text-xs font-mono text-zinc-500 truncate max-w-[200px]">
                 → {action.recipient}
+              </span>
+            )}
+            {action.frequency && (
+              <span className="text-xs font-mono text-zinc-500">
+                {action.frequency === "P1D"
+                  ? "daily"
+                  : action.frequency === "P1M"
+                    ? "monthly"
+                    : "weekly"}
+              </span>
+            )}
+            {action.collateralToken && (
+              <span className="text-xs font-mono text-zinc-500">
+                collateral: {action.collateralToken}
+              </span>
+            )}
+            {action.fromChain && (
+              <span className="text-xs font-mono text-zinc-500">
+                from {action.fromChain}
               </span>
             )}
           </div>

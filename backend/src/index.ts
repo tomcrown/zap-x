@@ -15,6 +15,8 @@ import lendingRouter from './routes/lending.js';
 import swapRouter from './routes/swap.js';
 import aiRouter from './routes/ai.js';
 import chatRouter from './routes/chat.js';
+import dcaRouter from './routes/dca.js';
+import bridgeRouter from './routes/bridge.js';
 
 // Bootstrap DB on startup
 import './db/database.js';
@@ -65,6 +67,8 @@ app.use('/api/lending', lendingRouter);
 app.use('/api/swap', swapRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/ai', aiRouter);
+app.use('/api/dca', dcaRouter);
+app.use('/api/bridge', bridgeRouter);
 
 // ─── Error Handling ────────────────────────────────────────────────────────────
 

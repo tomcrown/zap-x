@@ -32,7 +32,7 @@ export interface LendingStats {
   positions: LendingPosition[];
   projectedAnnualYield: string;
 }
-export type ActionType = 'send' | 'stake' | 'unstake' | 'swap' | 'save' | 'invest';
+export type ActionType = 'send' | 'stake' | 'unstake' | 'swap' | 'save' | 'invest' | 'bridge' | 'dca' | 'borrow' | 'repay';
 
 export interface Transaction {
   id: number;
@@ -104,6 +104,10 @@ export interface ParsedAction {
   toToken?: string;
   pool?: string;
   note?: string;
+  fromChain?: string;
+  frequency?: string;
+  collateralToken?: TokenSymbol;
+  cycles?: number;
 }
 
 export interface AIParseResult {

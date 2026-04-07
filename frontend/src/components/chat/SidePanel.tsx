@@ -1,8 +1,15 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { transferApi, lendingApi, swapApi, claimApi } from "../../lib/api.js";
+import {
+  transferApi,
+  lendingApi,
+  swapApi,
+  claimApi,
+  dcaApi,
+} from "../../lib/api.js";
 import { useWallet } from "../../contexts/WalletContext.js";
 import { TokenSymbol, ClaimLink } from "../../types/index.js";
+import { executeDcaCancel } from "../../lib/starkzap.js";
 
 const STARKSCAN = "https://starkscan.co/tx/";
 
@@ -15,12 +22,13 @@ const TOKEN_LABEL: Record<string, string> = {
 };
 
 const CAPABILITIES = [
-  { cmd: "Send", ex: "send 5 STRK tony@gmail.com" },
-  { cmd: "Email transfer", ex: "send 10 USDC to friend@email.com" },
+  { cmd: "Send", ex: "send 5 STRK to tony@gmail.com" },
   { cmd: "Swap", ex: "swap 1 ETH to USDC" },
-  { cmd: "Lend", ex: "lend 50 USDC" },
+  { cmd: "Save", ex: "save 50 USDC" },
   { cmd: "Withdraw", ex: "withdraw my USDC position" },
-  { cmd: "Balance", ex: "show my balance" },
+  { cmd: "Bridge", ex: "bridge 10 USDC from Ethereum" },
+  { cmd: "DCA", ex: "buy 10 USDC every week" },
+  { cmd: "Borrow", ex: "borrow 50 USDC" },
   { cmd: "History", ex: "recent transactions" },
 ];
 
@@ -110,7 +118,12 @@ function ClaimRow({ claim }: { claim: ClaimLink }) {
   const [cancelling, setCancelling] = useState(false);
 
   async function handleCancel() {
-    if (!confirm(`Cancel claim of ${claim.amount} ${claim.tokenType}? Funds will be refunded to your wallet.`)) return;
+    if (
+      !confirm(
+        `Cancel claim of ${claim.amount} ${claim.tokenType}? Funds will be refunded to your wallet.`,
+      )
+    )
+      return;
     setCancelling(true);
     try {
       await claimApi.cancel(claim.token);
@@ -163,6 +176,69 @@ function ClaimRow({ claim }: { claim: ClaimLink }) {
   );
 }
 
+// ─── DCA row ───────────────────────────────────────────────────────────────────
+
+const FREQ_LABEL: Record<string, string> = {
+  P1D: "daily",
+  P7D: "weekly",
+  P1M: "monthly",
+};
+
+function DcaRow({ order }: { order: any }) {
+  const queryClient = useQueryClient();
+  const [cancelling, setCancelling] = useState(false);
+
+  async function handleCancel() {
+    if (
+      !confirm(
+        `Cancel DCA — ${order.amount_per_cycle} ${order.sell_token} → ${order.buy_token}?`,
+      )
+    )
+      return;
+    setCancelling(true);
+    try {
+      if (order.order_address) {
+        await executeDcaCancel(order.order_address);
+        await dcaApi.cancel(order.order_address, order.tx_hash);
+      }
+      queryClient.invalidateQueries({ queryKey: ["dca-orders"] });
+    } catch (e: any) {
+      alert(e.message ?? "Cancel failed");
+    } finally {
+      setCancelling(false);
+    }
+  }
+
+  const freqLabel = FREQ_LABEL[order.frequency] ?? order.frequency;
+
+  return (
+    <div className="flex items-start justify-between gap-2 py-1.5">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-mono uppercase tracking-wider text-accent">
+            {freqLabel}
+          </span>
+          <span className="text-xs font-mono text-white">
+            {order.amount_per_cycle} {order.sell_token}
+          </span>
+        </div>
+        <span className="text-[11px] font-mono text-zinc-600 block">
+          → {order.buy_token}
+        </span>
+      </div>
+      {order.status === "active" && (
+        <button
+          onClick={handleCancel}
+          disabled={cancelling}
+          className="text-[10px] font-mono text-zinc-700 hover:text-red-400 transition-colors shrink-0 mt-0.5 disabled:opacity-40"
+        >
+          {cancelling ? "…" : "cancel"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ─── Main panel ────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -200,6 +276,13 @@ export function SidePanel({ isOpen, onClose }: Props) {
     queryFn: claimApi.list,
     enabled: !!walletAddress,
     refetchInterval: 30_000,
+  });
+
+  const { data: dcaOrders } = useQuery({
+    queryKey: ["dca-orders"],
+    queryFn: dcaApi.orders,
+    enabled: !!walletAddress,
+    refetchInterval: 60_000,
   });
 
   const displayTokens: TokenSymbol[] = ["STRK", "ETH", "USDC", "wBTC"];
@@ -353,15 +436,31 @@ export function SidePanel({ isOpen, onClose }: Props) {
             </div>
           )}
 
+          {/* DCA orders */}
+          {(dcaOrders ?? []).filter((o) => o.status === "active").length >
+            0 && (
+            <div className="px-4 py-4 border-b border-surface-border">
+              <span className="text-xs text-zinc-600 font-mono block mb-2">
+                DCA orders
+              </span>
+              <div className="divide-y divide-surface-border">
+                {(dcaOrders ?? [])
+                  .filter((o) => o.status === "active")
+                  .slice(0, 3)
+                  .map((o) => (
+                    <DcaRow key={o.id} order={o} />
+                  ))}
+              </div>
+            </div>
+          )}
+
           {/* Activity feed */}
           <div className="px-4 py-4 border-b border-surface-border">
             <span className="text-xs text-zinc-600 font-mono block mb-3">
               Activity
             </span>
             {activity.length === 0 ? (
-              <p className="text-xs text-zinc-800 font-mono">
-                no activity yet
-              </p>
+              <p className="text-xs text-zinc-800 font-mono">no activity yet</p>
             ) : (
               <div className="space-y-2">
                 {activity.map((entry) => {
@@ -378,9 +477,7 @@ export function SidePanel({ isOpen, onClose }: Props) {
                           {KIND_SIGN[entry.kind]}
                         </span>
                         <span className="text-xs font-mono text-zinc-600 truncate">
-                          {entry.kind === "swap"
-                            ? entry.label
-                            : shortLabel}
+                          {entry.kind === "swap" ? entry.label : shortLabel}
                         </span>
                         {entry.txHash && (
                           <svg

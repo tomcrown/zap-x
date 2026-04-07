@@ -117,16 +117,20 @@ export interface UserProfile {
 
 // ─── AI Parsing Types ──────────────────────────────────────────────────────────
 
-export type ActionType = 'send' | 'stake' | 'unstake' | 'swap' | 'save' | 'invest';
+export type ActionType = 'send' | 'stake' | 'unstake' | 'swap' | 'save' | 'invest' | 'bridge' | 'dca' | 'borrow' | 'repay';
 
 export interface ParsedAction {
   type: ActionType;
   amount: string;
   token: TokenSymbol;
-  recipient?: string;       // For send actions: username, email, or address
-  toToken?: string;         // For swap actions
-  pool?: string;            // For stake/unstake
+  recipient?: string;          // send: username, email, or address
+  toToken?: string;            // swap / dca: target token
+  pool?: string;               // stake/unstake
   note?: string;
+  fromChain?: string;          // bridge: "ethereum"
+  frequency?: string;          // dca: ISO 8601 duration e.g. "P1D", "P7D", "P1M"
+  collateralToken?: TokenSymbol; // borrow/repay: collateral token
+  cycles?: number;             // dca: number of cycles (optional)
 }
 
 export interface AIParseResult {
@@ -134,6 +138,31 @@ export interface AIParseResult {
   original: string;
   confidence: number;       // 0–1
   clarification?: string;   // If ambiguous
+}
+
+// ─── DCA / Bridge Record Types ─────────────────────────────────────────────────
+
+export interface DcaRecord {
+  id: number;
+  user_wallet: string;
+  sell_token: string;
+  buy_token: string;
+  amount_per_cycle: string;
+  frequency: string;
+  order_address: string | null;
+  tx_hash: string;
+  status: 'active' | 'cancelled';
+  created_at: string;
+}
+
+export interface BridgeRecord {
+  id: number;
+  user_wallet: string;
+  token: string;
+  amount: string;
+  from_chain: string;
+  tx_hash: string;
+  created_at: string;
 }
 
 // ─── Email Types ───────────────────────────────────────────────────────────────
