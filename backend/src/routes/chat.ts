@@ -25,29 +25,130 @@ const chatSchema = z.object({
   message: z.string().min(1).max(500),
 });
 
-// ─── Read-only helpers ─────────────────────────────────────────────────────────
+// ─── Unified Activity Feed ────────────────────────────────────────────────────
 
-function getTransactionHistory(walletAddress: string) {
+export interface ActivityItem {
+  kind: "send" | "receive" | "swap" | "dca" | "save" | "withdraw" | "bridge";
+  token: string;
+  amount: string;
+  label: string; // recipient / toToken / fromChain / pool
+  status: string;
+  tx_hash: string | null;
+  created_at: string;
+}
+
+function getUnifiedActivity(walletAddress: string): ActivityItem[] {
   const db = getDb();
-  return db
+
+  // Sends (outgoing)
+  const sends = db
     .prepare(
-      `
-    SELECT token, amount, recipient_identifier, sender_wallet, status, tx_hash, created_at
-    FROM transactions
-    WHERE (sender_wallet = ? OR recipient_wallet = ?) AND status != 'failed'
-    ORDER BY created_at DESC
-    LIMIT 5
-  `,
+      `SELECT
+        'send' AS kind,
+        token,
+        amount,
+        recipient_identifier AS label,
+        status,
+        tx_hash,
+        created_at
+       FROM transactions
+       WHERE sender_wallet = ? AND status != 'failed'
+       ORDER BY created_at DESC LIMIT 8`,
     )
-    .all(walletAddress, walletAddress) as {
-    token: string;
-    amount: string;
-    recipient_identifier: string;
-    sender_wallet: string;
-    status: string;
-    tx_hash: string | null;
-    created_at: string;
-  }[];
+    .all(walletAddress) as ActivityItem[];
+
+  // Receives (incoming — from escrow claims or direct sends to this wallet)
+  const receives = db
+    .prepare(
+      `SELECT
+        'receive' AS kind,
+        token,
+        amount,
+        sender_wallet AS label,
+        status,
+        tx_hash,
+        created_at
+       FROM transactions
+       WHERE recipient_wallet = ? AND sender_wallet != ? AND status != 'failed'
+       ORDER BY created_at DESC LIMIT 8`,
+    )
+    .all(walletAddress, walletAddress) as ActivityItem[];
+
+  // Swaps
+  const swaps = db
+    .prepare(
+      `SELECT
+        'swap' AS kind,
+        token_in AS token,
+        amount_in AS amount,
+        token_out AS label,
+        'confirmed' AS status,
+        tx_hash,
+        created_at
+       FROM swaps
+       WHERE user_wallet = ?
+       ORDER BY created_at DESC LIMIT 8`,
+    )
+    .all(walletAddress) as ActivityItem[];
+
+  // DCA orders
+  const dcaRows = db
+    .prepare(
+      `SELECT
+        'dca' AS kind,
+        sell_token AS token,
+        amount_per_cycle AS amount,
+        buy_token AS label,
+        status,
+        tx_hash,
+        created_at
+       FROM dca_records
+       WHERE user_wallet = ?
+       ORDER BY created_at DESC LIMIT 5`,
+    )
+    .all(walletAddress) as ActivityItem[];
+
+  // Lending deposits
+  const saves = db
+    .prepare(
+      `SELECT
+        CASE WHEN status = 'withdrawn' THEN 'withdraw' ELSE 'save' END AS kind,
+        token,
+        supplied_amount AS amount,
+        'Vesu' AS label,
+        status,
+        entry_tx_hash AS tx_hash,
+        created_at
+       FROM lending_positions
+       WHERE user_wallet = ?
+       ORDER BY created_at DESC LIMIT 5`,
+    )
+    .all(walletAddress) as ActivityItem[];
+
+  // Bridge records
+  const bridges = db
+    .prepare(
+      `SELECT
+        'bridge' AS kind,
+        token,
+        amount,
+        from_chain AS label,
+        'confirmed' AS status,
+        tx_hash,
+        created_at
+       FROM bridge_records
+       WHERE user_wallet = ?
+       ORDER BY created_at DESC LIMIT 5`,
+    )
+    .all(walletAddress) as ActivityItem[];
+
+  // Merge all, sort newest-first, cap at 15
+  return [...sends, ...receives, ...swaps, ...dcaRows, ...saves, ...bridges]
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )
+    .slice(0, 15);
 }
 
 // ─── Intent detection ──────────────────────────────────────────────────────────
@@ -55,7 +156,7 @@ function getTransactionHistory(walletAddress: string) {
 const BALANCE_RE =
   /\b(balance|portfolio|holdings|how much|what.*(have|got))\b/i;
 const HISTORY_RE =
-  /\b(histor|recent|transaction|transfer|sent|received|activity)\b/i;
+  /\b(histor|recent|transaction|transfer|sent|received|activity|show.*tx|past)\b/i;
 const POSITION_RE =
   /\b(lending|position|earning|yield|supplied|deposited|lend|vesu|saving|invested)\b/i;
 const HELP_RE = /\b(what|help|can you|how|capabilities|commands)\b/i;
@@ -75,7 +176,6 @@ async function enrichAction(
 }> {
   const amt = parseFloat(action.amount);
   if (isNaN(amt) || amt <= 0) {
-    // For unstake with 0/missing amount, look up the active position and use its full amount
     if (action.type === "unstake") {
       const positions = getActiveLendingPositions(senderWallet);
       const pos = positions.find(
@@ -160,7 +260,6 @@ async function enrichAction(
         ready: false,
         warning: 'Specify the source chain, e.g. "from Ethereum".',
       };
-    // Bridge requires MetaMask — clicking confirm will open MetaMask automatically
     return {
       action,
       ready: true,
@@ -223,7 +322,6 @@ router.post(
       const lower = message.toLowerCase().trim();
 
       // ── 1. Read-only intent checks FIRST (before Gemini) ──────────────────────
-      // These are checked directly from the raw message — no AI parse needed.
 
       if (BALANCE_RE.test(lower)) {
         res.json({
@@ -236,31 +334,21 @@ router.post(
       }
 
       if (HISTORY_RE.test(lower)) {
-        const txs = getTransactionHistory(walletAddress);
-        if (txs.length === 0) {
+        const items = getUnifiedActivity(walletAddress);
+        if (items.length === 0) {
           res.json({
             success: true,
-            message: "No transactions yet. Try sending some STRK!",
+            message: "No activity yet. Try sending some STRK!",
             actions: [],
+            data: { type: "history", items: [] },
           });
           return;
         }
-        const lines = txs.map((tx) => {
-          const isSent = tx.sender_wallet === walletAddress;
-          const sign = isSent ? "-" : "+";
-          const who = isSent ? tx.recipient_identifier : tx.sender_wallet;
-          const shortWho =
-            who.length > 20 ? `${who.slice(0, 12)}…${who.slice(-6)}` : who;
-          const date = new Date(tx.created_at).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-          });
-          return `${sign}${tx.amount} ${tx.token}  →  ${shortWho}  (${date})`;
-        });
         res.json({
           success: true,
-          message: `Last ${txs.length} transaction${txs.length !== 1 ? "s" : ""}:\n\n${lines.join("\n")}`,
+          message: `${items.length} recent activit${items.length !== 1 ? "ies" : "y"}`,
           actions: [],
+          data: { type: "history", items },
         });
         return;
       }
@@ -307,9 +395,9 @@ router.post(
       if (HELP_RE.test(lower)) {
         res.json({
           success: false,
-          message:
-            'Here\'s what I can do:\n\n→ Send — "send 5 STRK to alice@gmail.com"\n→ Email send — "send 10 USDC to friend@gmail.com" (they get a claim link)\n→ Swap — "swap 1 ETH to USDC"\n→ Save & earn — "Save 50 USDC"\n→ Withdraw — "withdraw my USDC position"\n→ Borrow — "borrow 50 USDC" (collateral: STRK)\n→ Repay — "repay 50 USDC"\n→ Bridge — "bridge 10 USDC from Ethereum" (MetaMask required)\n→ DCA — "buy 10 USDC every week"\n→ Check positions — "show my lending positions"\n→ History — "show recent transactions"\n\nAll Starknet transactions are gasless. AVNU covers your fees.',
+          message: "Here's everything I can do — tap any command to try it:",
           actions: [],
+          data: { type: "help" },
         });
         return;
       }

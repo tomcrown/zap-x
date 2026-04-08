@@ -32,6 +32,7 @@ import {
 } from "../../lib/starkzap.js";
 import { useWallet } from "../../contexts/WalletContext.js";
 import type { ParsedAction, TokenSymbol } from "../../types/index.js";
+import type { ActivityItem, ChatData } from "../../lib/api.js";
 
 const STARKSCAN = "https://starkscan.co/tx/";
 
@@ -52,9 +53,9 @@ interface Message {
   actions?: EnrichedAction[];
   executing?: boolean;
   done?: boolean;
-  // for result messages
   txHash?: string;
   resultLabel?: string;
+  data?: ChatData;
 }
 
 // ─── Quick Commands ────────────────────────────────────────────────────────────
@@ -165,6 +166,401 @@ const QUICK_COMMANDS = [
 let _msgId = 0;
 function nextId() {
   return ++_msgId;
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+const KIND_META: Record<
+  ActivityItem["kind"],
+  { label: string; color: string; bg: string; border: string; glyph: string }
+> = {
+  send: {
+    label: "Sent",
+    color: "text-red-400",
+    bg: "bg-red-500/10",
+    border: "border-red-500/20",
+    glyph: "↑",
+  },
+  receive: {
+    label: "Received",
+    color: "text-green-400",
+    bg: "bg-green-500/10",
+    border: "border-green-500/20",
+    glyph: "↓",
+  },
+  swap: {
+    label: "Swapped",
+    color: "text-blue-400",
+    bg: "bg-blue-500/10",
+    border: "border-blue-500/20",
+    glyph: "⇄",
+  },
+  dca: {
+    label: "DCA",
+    color: "text-violet-400",
+    bg: "bg-violet-500/10",
+    border: "border-violet-500/20",
+    glyph: "⟳",
+  },
+  save: {
+    label: "Saved",
+    color: "text-cyan-400",
+    bg: "bg-cyan-500/10",
+    border: "border-cyan-500/20",
+    glyph: "↑",
+  },
+  withdraw: {
+    label: "Withdrew",
+    color: "text-orange-400",
+    bg: "bg-orange-500/10",
+    border: "border-orange-500/20",
+    glyph: "↓",
+  },
+  bridge: {
+    label: "Bridged",
+    color: "text-pink-400",
+    bg: "bg-pink-500/10",
+    border: "border-pink-500/20",
+    glyph: "⇌",
+  },
+};
+
+// ─── History Widget ────────────────────────────────────────────────────────────
+
+function HistoryWidget({ items }: { items: ActivityItem[] }) {
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  if (items.length === 0) {
+    return (
+      <div className="mt-2 px-4 py-6 rounded-xl border border-surface-border bg-surface-card text-center">
+        <p className="text-zinc-600 font-mono text-sm">no activity yet</p>
+        <p className="text-zinc-700 text-xs mt-1">
+          send some STRK to get started
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 rounded-xl border border-surface-border bg-surface-card overflow-hidden">
+      {/* Header */}
+      <div className="px-4 py-2.5 border-b border-surface-border flex items-center justify-between">
+        <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-600">
+          Activity
+        </span>
+        <span className="text-[10px] font-mono text-zinc-700">
+          {items.length} items
+        </span>
+      </div>
+
+      {/* Items */}
+      <div className="divide-y divide-surface-border">
+        {items.map((item, i) => {
+          const meta = KIND_META[item.kind] ?? KIND_META.send;
+          const isExpanded = expanded === i;
+          const shortLabel =
+            item.label.length > 22
+              ? `${item.label.slice(0, 14)}…${item.label.slice(-6)}`
+              : item.label;
+          const shortHash = item.tx_hash
+            ? `${item.tx_hash.slice(0, 10)}…${item.tx_hash.slice(-6)}`
+            : null;
+
+          return (
+            <button
+              key={i}
+              onClick={() => setExpanded(isExpanded ? null : i)}
+              className="w-full text-left px-4 py-3 hover:bg-white/[0.02] transition-colors group"
+              style={{ animationDelay: `${i * 40}ms` }}
+            >
+              <div className="flex items-center gap-3">
+                {/* Glyph badge */}
+                <div
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-mono shrink-0 ${meta.bg} ${meta.color} border ${meta.border}`}
+                >
+                  {meta.glyph}
+                </div>
+
+                {/* Main info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    <span
+                      className={`text-xs font-mono font-semibold uppercase tracking-wider ${meta.color}`}
+                    >
+                      {meta.label}
+                    </span>
+                    <span className="text-sm font-mono text-white font-bold">
+                      {parseFloat(item.amount).toFixed(4)}
+                    </span>
+                    <span className="text-sm font-mono text-accent font-semibold">
+                      {item.token}
+                    </span>
+                    {item.kind === "swap" && (
+                      <span className="text-xs font-mono text-zinc-500">
+                        → {item.label}
+                      </span>
+                    )}
+                  </div>
+                  {item.kind !== "swap" && (
+                    <p className="text-xs font-mono text-zinc-600 truncate mt-0.5">
+                      {item.kind === "save" || item.kind === "withdraw"
+                        ? "Vesu Protocol"
+                        : item.kind === "bridge"
+                          ? `from ${item.label}`
+                          : item.kind === "dca"
+                            ? `→ ${item.label}`
+                            : shortLabel}
+                    </p>
+                  )}
+                </div>
+
+                {/* Time + chevron */}
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className="text-[10px] font-mono text-zinc-700">
+                    {relativeTime(item.created_at)}
+                  </span>
+                  <svg
+                    className={`w-3 h-3 text-zinc-700 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </div>
+              </div>
+
+              {/* Expanded: tx hash */}
+              {isExpanded && shortHash && (
+                <div className="mt-2.5 ml-11 flex items-center gap-2">
+                  <a
+                    href={STARKSCAN + item.tx_hash}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface border border-surface-border hover:border-accent/40 transition-colors"
+                  >
+                    <span className="font-mono text-[11px] text-accent">
+                      {shortHash}
+                    </span>
+                    <svg
+                      className="w-2.5 h-2.5 text-accent/60"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                      />
+                    </svg>
+                  </a>
+                  <span
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${meta.bg} ${meta.color} border ${meta.border}`}
+                  >
+                    {item.status}
+                  </span>
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Help Widget ───────────────────────────────────────────────────────────────
+
+const HELP_COMMANDS = [
+  {
+    group: "Transfer",
+    color: "text-red-400",
+    bg: "bg-red-500/8",
+    border: "border-red-500/15",
+    hoverBorder: "hover:border-red-500/40",
+    glyph: "→",
+    commands: [
+      {
+        label: "Send to wallet",
+        example: "send 5 STRK to 0x04a…",
+        fill: "Send 5 STRK to ",
+      },
+      {
+        label: "Send to email",
+        example: "send 10 USDC to friend@gmail.com",
+        fill: "Send 10 USDC to ",
+      },
+      {
+        label: "Send to user",
+        example: "send 2 ETH to @alice",
+        fill: "Send 2 ETH to @",
+      },
+    ],
+  },
+  {
+    group: "Trade",
+    color: "text-blue-400",
+    bg: "bg-blue-500/8",
+    border: "border-blue-500/15",
+    hoverBorder: "hover:border-blue-500/40",
+    glyph: "⇄",
+    commands: [
+      {
+        label: "Swap tokens",
+        example: "swap 1 ETH to USDC",
+        fill: "Swap 1 ETH to USDC",
+      },
+      {
+        label: "DCA weekly",
+        example: "buy 10 USDC every week",
+        fill: "Buy 10 USDC every week",
+      },
+      {
+        label: "DCA daily",
+        example: "buy 5 STRK every day",
+        fill: "Buy 5 STRK every day",
+      },
+    ],
+  },
+  {
+    group: "Earn",
+    color: "text-cyan-400",
+    bg: "bg-cyan-500/8",
+    border: "border-cyan-500/15",
+    hoverBorder: "hover:border-cyan-500/40",
+    glyph: "↑",
+    commands: [
+      { label: "Save & earn", example: "save 50 USDC", fill: "Save 50 USDC" },
+      { label: "Borrow", example: "borrow 50 USDC", fill: "Borrow 50 USDC" },
+      { label: "Repay", example: "repay 50 USDC", fill: "Repay 50 USDC" },
+    ],
+  },
+  {
+    group: "Bridge",
+    color: "text-pink-400",
+    bg: "bg-pink-500/8",
+    border: "border-pink-500/15",
+    hoverBorder: "hover:border-pink-500/40",
+    glyph: "⇌",
+    commands: [
+      {
+        label: "Bridge from ETH",
+        example: "bridge 10 USDC from Ethereum",
+        fill: "Bridge 10 USDC from Ethereum",
+      },
+    ],
+  },
+];
+
+function HelpWidget({ onFill }: { onFill: (text: string) => void }) {
+  return (
+    <div className="mt-2 space-y-3">
+      {/* Top note */}
+      <div className="flex items-center gap-2 px-1">
+        <div className="h-px flex-1 bg-surface-border" />
+        <span className="text-[10px] font-mono text-zinc-700 uppercase tracking-widest">
+          tap to try
+        </span>
+        <div className="h-px flex-1 bg-surface-border" />
+      </div>
+
+      {HELP_COMMANDS.map((group) => (
+        <div
+          key={group.group}
+          className="rounded-xl border border-surface-border bg-surface-card overflow-hidden"
+        >
+          {/* Group header */}
+          <div className="px-4 py-2 border-b border-surface-border flex items-center gap-2">
+            <span
+              className={`w-5 h-5 rounded flex items-center justify-center text-xs font-mono ${group.bg} ${group.color}`}
+            >
+              {group.glyph}
+            </span>
+            <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-semibold">
+              {group.group}
+            </span>
+          </div>
+
+          {/* Commands */}
+          <div className="divide-y divide-surface-border">
+            {group.commands.map((cmd) => (
+              <button
+                key={cmd.label}
+                onClick={() => onFill(cmd.fill)}
+                className={`w-full text-left px-4 py-3 flex items-center justify-between gap-4 hover:bg-white/[0.025] transition-colors group`}
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-mono text-zinc-400 group-hover:text-zinc-200 transition-colors font-semibold">
+                    {cmd.label}
+                  </p>
+                  <p className="text-[11px] font-mono text-zinc-700 group-hover:text-zinc-500 mt-0.5 transition-colors">
+                    "{cmd.example}"
+                  </p>
+                </div>
+                <svg
+                  className={`w-3.5 h-3.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ${group.color}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* Gasless note */}
+      <div className="flex items-center gap-2 px-1 pb-1">
+        <svg
+          className="w-3 h-3 text-accent shrink-0"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M13 10V3L4 14h7v7l9-11h-7z"
+          />
+        </svg>
+        <span className="text-[10px] font-mono text-zinc-700">
+          All Starknet transactions are gasless — AVNU covers fees
+        </span>
+      </div>
+    </div>
+  );
 }
 
 // ─── Portfolio Bar ─────────────────────────────────────────────────────────────
@@ -311,11 +707,8 @@ function ResultBubble({ msg }: { msg: Message }) {
           : "bg-red-500/5 border-red-500/20"
       }`}
     >
-      {/* Icon */}
       <div
-        className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
-          isSuccess ? "bg-green-500/15" : "bg-red-500/15"
-        }`}
+        className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${isSuccess ? "bg-green-500/15" : "bg-red-500/15"}`}
       >
         {isSuccess ? (
           <svg
@@ -347,8 +740,6 @@ function ResultBubble({ msg }: { msg: Message }) {
           </svg>
         )}
       </div>
-
-      {/* Text */}
       <div className="flex-1 min-w-0">
         <p
           className={`font-mono text-xs font-semibold ${isSuccess ? "text-green-400" : "text-red-400"}`}
@@ -380,7 +771,6 @@ function ResultBubble({ msg }: { msg: Message }) {
 
   return (
     <div className="flex gap-3 justify-start animate-fade-in">
-      {/* Same avatar slot as assistant messages so alignment matches */}
       <div className="w-7 h-7 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 mt-0.5">
         <svg width="16" height="16" viewBox="0 0 200 200" fill="none">
           <path
@@ -420,7 +810,6 @@ function ResultBubble({ msg }: { msg: Message }) {
 
 export function AIExecutor() {
   const { walletAddress, balances, refreshBalances, profile } = useWallet();
-
   const greeting = profile?.username ? `@${profile.username}` : "there";
 
   const [messages, setMessages] = useState<Message[]>([
@@ -457,7 +846,11 @@ export function AIExecutor() {
     try {
       const result = await chatApi.send(text);
       if (!result.success || result.actions.length === 0) {
-        addMessage({ role: "assistant", text: result.message });
+        addMessage({
+          role: "assistant",
+          text: result.message,
+          data: result.data,
+        });
         return;
       }
       const msgId = nextId();
@@ -468,6 +861,7 @@ export function AIExecutor() {
           role: "assistant",
           text: result.message,
           actions: result.actions as EnrichedAction[],
+          data: result.data,
         },
       ]);
     } catch (err: any) {
@@ -479,6 +873,17 @@ export function AIExecutor() {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
+  };
+
+  // Fill input and focus (for HelpWidget taps)
+  const handleFill = (text: string) => {
+    setInput(text);
+    setTimeout(() => {
+      inputRef.current?.focus();
+      // Move cursor to end
+      const el = inputRef.current;
+      if (el) el.setSelectionRange(el.value.length, el.value.length);
+    }, 30);
   };
 
   const handleExecuteAction = async (
@@ -659,7 +1064,6 @@ export function AIExecutor() {
 
       refreshBalances();
 
-      // Mark action done on the original message
       setMessages((prev) =>
         prev.map((m) => {
           if (m.id !== msgId || !m.actions) return m;
@@ -675,7 +1079,6 @@ export function AIExecutor() {
         }),
       );
 
-      // ── Post result as a chat message instead of a toast ──────────────────
       addMessage({ role: "result-success", text: resultText, txHash });
     } catch (err: any) {
       updateMessage(msgId, { executing: false });
@@ -699,7 +1102,6 @@ export function AIExecutor() {
         errMsg = `Insufficient balance for this transaction.`;
       }
 
-      // ── Post error as a chat message instead of a toast ───────────────────
       addMessage({ role: "result-error", text: errMsg });
     }
   };
@@ -722,19 +1124,22 @@ export function AIExecutor() {
 
   return (
     <>
-      {/* Keyframe for typing dots — injected once */}
       <style>{`
         @keyframes typing-bounce {
           0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
           30% { transform: translateY(-5px); opacity: 1; }
         }
+        @keyframes slide-up {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .animate-slide-up { animation: slide-up 0.25s ease both; }
       `}</style>
 
       <div className="h-full flex flex-col overflow-hidden">
-        {/* ── Portfolio bar ─────────────────────────────────────────────── */}
         <PortfolioBar />
 
-        {/* ── Messages ──────────────────────────────────────────────────── */}
+        {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-5 space-y-5 max-w-3xl mx-auto w-full">
           {messages.map((msg) =>
             msg.role === "result-success" || msg.role === "result-error" ? (
@@ -744,6 +1149,7 @@ export function AIExecutor() {
                 key={msg.id}
                 msg={msg}
                 balances={balances}
+                onFill={handleFill}
                 onExecuteAction={(action, idx) =>
                   handleExecuteAction(msg.id, action, idx)
                 }
@@ -756,7 +1162,7 @@ export function AIExecutor() {
           <div ref={bottomRef} />
         </div>
 
-        {/* ── Quick commands + input ─────────────────────────────────────── */}
+        {/* Quick commands + input */}
         <div className="border-t border-surface-border bg-surface">
           <div className="px-4 sm:px-8 pt-3 pb-2 flex gap-2 flex-wrap max-w-3xl mx-auto w-full">
             {QUICK_COMMANDS.map((cmd) => (
@@ -842,11 +1248,13 @@ export function AIExecutor() {
 function ChatBubble({
   msg,
   balances,
+  onFill,
   onExecuteAction,
   onExecuteAll,
 }: {
   msg: Message;
   balances: Record<string, string>;
+  onFill: (text: string) => void;
   onExecuteAction: (action: EnrichedAction, idx: number) => void;
   onExecuteAll: (actions: EnrichedAction[]) => void;
 }) {
@@ -890,6 +1298,19 @@ function ChatBubble({
           {msg.text}
         </div>
 
+        {/* Rich data widgets */}
+        {msg.data?.type === "history" && (
+          <div className="w-full animate-slide-up">
+            <HistoryWidget items={msg.data.items} />
+          </div>
+        )}
+        {msg.data?.type === "help" && (
+          <div className="w-full animate-slide-up">
+            <HelpWidget onFill={onFill} />
+          </div>
+        )}
+
+        {/* Action cards */}
         {msg.actions && msg.actions.length > 0 && (
           <div className="w-full space-y-2">
             {msg.actions.map((action, idx) => (
@@ -967,7 +1388,6 @@ function ActionCard({
       }`}
     >
       <div className="px-4 py-3.5 flex items-center gap-4">
-        {/* Glyph */}
         <div
           className={`w-9 h-9 rounded-lg flex items-center justify-center text-base font-mono shrink-0 ${
             action._done
@@ -980,7 +1400,6 @@ function ActionCard({
           {action._done ? "✓" : (ACTION_ICON[action.type] ?? "·")}
         </div>
 
-        {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 flex-wrap">
             <span className="text-[10px] font-mono uppercase tracking-widest text-accent font-semibold">
@@ -1040,7 +1459,6 @@ function ActionCard({
           )}
         </div>
 
-        {/* CTA */}
         {action._done ? (
           <span className="text-xs font-mono text-green-400 shrink-0">
             done
