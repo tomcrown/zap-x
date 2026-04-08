@@ -10,6 +10,8 @@ import {
 import { useWallet } from "../../contexts/WalletContext.js";
 import { TokenSymbol, ClaimLink } from "../../types/index.js";
 import { executeDcaCancel } from "../../lib/starkzap.js";
+import { useMutation } from "@tanstack/react-query";
+import { useToast } from "../../contexts/ToastContext.js";
 
 const STARKSCAN = "https://starkscan.co/tx/";
 
@@ -115,25 +117,25 @@ const KIND_SIGN: Record<ActivityKind, string> = {
 
 function ClaimRow({ claim }: { claim: ClaimLink }) {
   const queryClient = useQueryClient();
-  const [cancelling, setCancelling] = useState(false);
+  const { toast } = useToast();
+  const [confirming, setConfirming] = useState(false);
 
-  async function handleCancel() {
-    if (
-      !confirm(
-        `Cancel claim of ${claim.amount} ${claim.tokenType}? Funds will be refunded to your wallet.`,
-      )
-    )
-      return;
-    setCancelling(true);
-    try {
-      await claimApi.cancel(claim.token);
+  const cancelMutation = useMutation({
+    mutationFn: () => claimApi.cancel(claim.token),
+    onSuccess: (result: any) => {
+      toast({
+        type: "success",
+        title: "Claim cancelled",
+        message: "Funds refunded to your wallet.",
+        txHash: result?.txHash,
+      });
       queryClient.invalidateQueries({ queryKey: ["claims"] });
-    } catch (e: any) {
-      alert(e.message ?? "Cancel failed");
-    } finally {
-      setCancelling(false);
-    }
-  }
+    },
+    onError: (e: Error) => {
+      toast({ type: "error", title: "Cancel failed", message: e.message });
+    },
+    onSettled: () => setConfirming(false),
+  });
 
   const isPending = claim.status === "pending";
   const recipient = claim.recipientEmail ?? claim.recipientUsername ?? "—";
@@ -164,18 +166,38 @@ function ClaimRow({ claim }: { claim: ClaimLink }) {
         </span>
       </div>
       {isPending && (
-        <button
-          onClick={handleCancel}
-          disabled={cancelling}
-          className="text-[10px] font-mono text-zinc-700 hover:text-red-400 transition-colors shrink-0 mt-0.5 disabled:opacity-40"
-        >
-          {cancelling ? "…" : "cancel"}
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+          {confirming ? (
+            <>
+              <button
+                onClick={() => cancelMutation.mutate()}
+                disabled={cancelMutation.isPending}
+                className="text-[10px] font-mono text-red-400 hover:text-red-300 transition-colors disabled:opacity-40"
+              >
+                {cancelMutation.isPending ? "…" : "confirm"}
+              </button>
+              <span className="text-zinc-700 text-[10px]">·</span>
+              <button
+                onClick={() => setConfirming(false)}
+                disabled={cancelMutation.isPending}
+                className="text-[10px] font-mono text-zinc-600 hover:text-zinc-400 transition-colors disabled:opacity-40"
+              >
+                keep
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setConfirming(true)}
+              className="text-[10px] font-mono text-zinc-700 hover:text-red-400 transition-colors"
+            >
+              cancel
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
 }
-
 // ─── DCA row ───────────────────────────────────────────────────────────────────
 
 const FREQ_LABEL: Record<string, string> = {
@@ -186,28 +208,29 @@ const FREQ_LABEL: Record<string, string> = {
 
 function DcaRow({ order }: { order: any }) {
   const queryClient = useQueryClient();
-  const [cancelling, setCancelling] = useState(false);
+  const { toast } = useToast();
+  const [confirming, setConfirming] = useState(false);
 
-  async function handleCancel() {
-    if (
-      !confirm(
-        `Cancel DCA — ${order.amount_per_cycle} ${order.sell_token} → ${order.buy_token}?`,
-      )
-    )
-      return;
-    setCancelling(true);
-    try {
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
       if (order.order_address) {
         await executeDcaCancel(order.order_address);
         await dcaApi.cancel(order.order_address, order.tx_hash);
       }
+    },
+    onSuccess: () => {
+      toast({
+        type: "success",
+        title: "DCA cancelled",
+        message: `${order.amount_per_cycle} ${order.sell_token} → ${order.buy_token}`,
+      });
       queryClient.invalidateQueries({ queryKey: ["dca-orders"] });
-    } catch (e: any) {
-      alert(e.message ?? "Cancel failed");
-    } finally {
-      setCancelling(false);
-    }
-  }
+    },
+    onError: (e: Error) => {
+      toast({ type: "error", title: "Cancel failed", message: e.message });
+    },
+    onSettled: () => setConfirming(false),
+  });
 
   const freqLabel = FREQ_LABEL[order.frequency] ?? order.frequency;
 
@@ -227,13 +250,34 @@ function DcaRow({ order }: { order: any }) {
         </span>
       </div>
       {order.status === "active" && (
-        <button
-          onClick={handleCancel}
-          disabled={cancelling}
-          className="text-[10px] font-mono text-zinc-700 hover:text-red-400 transition-colors shrink-0 mt-0.5 disabled:opacity-40"
-        >
-          {cancelling ? "…" : "cancel"}
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+          {confirming ? (
+            <>
+              <button
+                onClick={() => cancelMutation.mutate()}
+                disabled={cancelMutation.isPending}
+                className="text-[10px] font-mono text-red-400 hover:text-red-300 transition-colors disabled:opacity-40"
+              >
+                {cancelMutation.isPending ? "…" : "confirm"}
+              </button>
+              <span className="text-zinc-700 text-[10px]">·</span>
+              <button
+                onClick={() => setConfirming(false)}
+                disabled={cancelMutation.isPending}
+                className="text-[10px] font-mono text-zinc-600 hover:text-zinc-400 transition-colors disabled:opacity-40"
+              >
+                keep
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setConfirming(true)}
+              className="text-[10px] font-mono text-zinc-700 hover:text-red-400 transition-colors"
+            >
+              cancel
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
