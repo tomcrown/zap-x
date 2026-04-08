@@ -25,6 +25,17 @@ router.get('/:token', async (req, res, next) => {
   }
 });
 
+/** Normalize a Starknet address to lowercase 0x-prefixed 64-char hex for comparison. */
+function normalizeAddress(addr: string): string {
+  if (!addr) return '';
+  try {
+    const n = BigInt(addr.toLowerCase());
+    return '0x' + n.toString(16).padStart(64, '0');
+  } catch {
+    return addr.toLowerCase();
+  }
+}
+
 // POST /api/claim/:token/redeem — Authenticated: claim funds into caller's wallet
 router.post('/:token/redeem', requireAuth as any, validate(redeemClaimSchema), async (req: AuthenticatedRequest, res, next) => {
   try {
@@ -38,7 +49,9 @@ router.post('/:token/redeem', requireAuth as any, validate(redeemClaimSchema), a
       .get(req.user!.privyUserId) as { wallet_address: string } | undefined;
 
     const authorizedWallet = dbUser?.wallet_address ?? req.user!.walletAddress;
-    if (!authorizedWallet || recipientWallet !== authorizedWallet) {
+    // Normalize both addresses before comparing — Privy and starkzap SDK may return
+    // the same address with different leading-zero padding or casing.
+    if (!authorizedWallet || normalizeAddress(recipientWallet) !== normalizeAddress(authorizedWallet)) {
       res.status(403).json({ error: 'Recipient wallet does not match authenticated user.' });
       return;
     }
