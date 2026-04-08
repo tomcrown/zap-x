@@ -2,6 +2,8 @@
  * AIExecutor — the entire product UI.
  * Chat interface that parses natural language, enriches actions via backend,
  * and executes them on-chain through the Starkzap SDK.
+ *
+ * Transaction results appear as chat messages — not toasts.
  */
 
 import { useState, useRef, useEffect } from "react";
@@ -29,8 +31,9 @@ import {
   getDcaOrders,
 } from "../../lib/starkzap.js";
 import { useWallet } from "../../contexts/WalletContext.js";
-import { useToast } from "../../contexts/ToastContext.js";
 import type { ParsedAction, TokenSymbol } from "../../types/index.js";
+
+const STARKSCAN = "https://starkscan.co/tx/";
 
 type EnrichedAction = ParsedAction & {
   ready: boolean;
@@ -40,7 +43,7 @@ type EnrichedAction = ParsedAction & {
   _done?: boolean;
 };
 
-type MessageRole = "user" | "assistant" | "system";
+type MessageRole = "user" | "assistant" | "result-success" | "result-error";
 
 interface Message {
   id: number;
@@ -49,6 +52,9 @@ interface Message {
   actions?: EnrichedAction[];
   executing?: boolean;
   done?: boolean;
+  // for result messages
+  txHash?: string;
+  resultLabel?: string;
 }
 
 // ─── Quick Commands ────────────────────────────────────────────────────────────
@@ -114,7 +120,6 @@ const QUICK_COMMANDS = [
     fill: "Save  STRK",
     send: false,
   },
-
   {
     label: "History",
     icon: (
@@ -157,8 +162,6 @@ const QUICK_COMMANDS = [
   },
 ];
 
-const TOKEN_DISPLAY = ["STRK", "ETH", "USDC", "wBTC"] as TokenSymbol[];
-
 let _msgId = 0;
 function nextId() {
   return ++_msgId;
@@ -180,17 +183,12 @@ function PortfolioBar() {
   }
 
   const strkBal = parseFloat(balances["STRK"] ?? "0");
-  const ethBal = parseFloat(balances["ETH"] ?? "0");
-  const usdcBal = parseFloat(balances["USDC"] ?? "0");
-  const btcBal = parseFloat(balances["wBTC"] ?? "0");
-
   const shortAddr = walletAddress
     ? `${walletAddress.slice(0, 8)}…${walletAddress.slice(-6)}`
     : "";
 
   return (
     <div className="border-b border-surface-border bg-surface-card/50 px-4 sm:px-8 py-5">
-      {/* Primary balance */}
       <div className="text-center mb-5">
         <p className="text-xs font-mono text-zinc-700 uppercase tracking-widest mb-1">
           STRK Balance
@@ -211,12 +209,10 @@ function PortfolioBar() {
         </div>
       </div>
 
-      {/* Wallet address + actions */}
       <div className="flex items-center justify-center gap-3">
         {walletAddress && (
           <button
             onClick={copyAddress}
-            title="Copy wallet address"
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface border border-surface-border hover:border-zinc-700 transition-colors group"
           >
             <svg
@@ -240,7 +236,6 @@ function PortfolioBar() {
         <button
           onClick={refreshBalances}
           disabled={balancesLoading}
-          title="Refresh balances"
           className="w-7 h-7 flex items-center justify-center rounded-lg bg-surface border border-surface-border hover:border-zinc-700 transition-colors text-zinc-700 hover:text-zinc-400"
         >
           <svg
@@ -262,11 +257,169 @@ function PortfolioBar() {
   );
 }
 
+// ─── Typing Indicator ──────────────────────────────────────────────────────────
+
+function TypingIndicator() {
+  return (
+    <div className="flex gap-3 justify-start animate-fade-in">
+      <div className="w-7 h-7 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 mt-0.5">
+        <svg width="16" height="16" viewBox="0 0 200 200" fill="none">
+          <path
+            d="M50 60H150L50 140H150"
+            stroke="#00E5FF"
+            strokeWidth="10"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M60 60L140 140M140 60L60 140"
+            stroke="#00E5FF"
+            strokeWidth="6"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+      <div className="px-4 py-3.5 rounded-2xl rounded-bl-sm bg-surface-card border border-surface-border flex items-center gap-1.5">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="w-1.5 h-1.5 rounded-full bg-zinc-500"
+            style={{
+              animation: "typing-bounce 1.2s ease-in-out infinite",
+              animationDelay: `${i * 180}ms`,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Result Bubble ─────────────────────────────────────────────────────────────
+
+function ResultBubble({ msg }: { msg: Message }) {
+  const isSuccess = msg.role === "result-success";
+  const shortHash = msg.txHash
+    ? `${msg.txHash.slice(0, 10)}…${msg.txHash.slice(-6)}`
+    : null;
+
+  const content = (
+    <div
+      className={`flex items-start gap-3 px-4 py-3 rounded-2xl rounded-bl-sm border text-sm transition-colors ${
+        isSuccess
+          ? "bg-green-500/5 border-green-500/20 hover:border-green-500/40"
+          : "bg-red-500/5 border-red-500/20"
+      }`}
+    >
+      {/* Icon */}
+      <div
+        className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+          isSuccess ? "bg-green-500/15" : "bg-red-500/15"
+        }`}
+      >
+        {isSuccess ? (
+          <svg
+            className="w-3.5 h-3.5 text-green-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2.5}
+              d="M5 13l4 4L19 7"
+            />
+          </svg>
+        ) : (
+          <svg
+            className="w-3.5 h-3.5 text-red-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2.5}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        )}
+      </div>
+
+      {/* Text */}
+      <div className="flex-1 min-w-0">
+        <p
+          className={`font-mono text-xs font-semibold ${isSuccess ? "text-green-400" : "text-red-400"}`}
+        >
+          {isSuccess ? "confirmed" : "failed"}
+        </p>
+        <p className="text-zinc-300 text-sm leading-snug mt-0.5">{msg.text}</p>
+        {shortHash && (
+          <p className="font-mono text-[11px] text-accent mt-1.5 flex items-center gap-1">
+            {shortHash}
+            <svg
+              className="w-2.5 h-2.5 opacity-60"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+              />
+            </svg>
+          </p>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex gap-3 justify-start animate-fade-in">
+      {/* Same avatar slot as assistant messages so alignment matches */}
+      <div className="w-7 h-7 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 mt-0.5">
+        <svg width="16" height="16" viewBox="0 0 200 200" fill="none">
+          <path
+            d="M50 60H150L50 140H150"
+            stroke="#00E5FF"
+            strokeWidth="10"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M60 60L140 140M140 60L60 140"
+            stroke="#00E5FF"
+            strokeWidth="6"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+      <div className="max-w-[80%]">
+        {msg.txHash ? (
+          <a
+            href={STARKSCAN + msg.txHash}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block no-underline"
+          >
+            {content}
+          </a>
+        ) : (
+          content
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 export function AIExecutor() {
   const { walletAddress, balances, refreshBalances, profile } = useWallet();
-  const { toast: showToast } = useToast();
 
   const greeting = profile?.username ? `@${profile.username}` : "there";
 
@@ -365,7 +518,7 @@ export function AIExecutor() {
             needsEscrow: prep.needsEscrow,
           });
           resultText = prep.needsEscrow
-            ? `${action.amount} ${action.token}. claim link sent to ${action.recipient} (Check spam folder)`
+            ? `${action.amount} ${action.token} sent — claim link emailed to ${action.recipient}`
             : `${action.amount} ${action.token} sent to ${action.recipient}`;
           break;
         }
@@ -421,19 +574,15 @@ export function AIExecutor() {
           break;
         }
         case "bridge": {
-          // Step 1: Connect MetaMask + auto-switch to correct Ethereum network
           const ethWallet = await connectEthereumWallet();
-          // Step 2: Fetch supported bridge tokens and find the requested one
           const bridgeTokens = await getBridgeTokens();
           const bridgeToken = bridgeTokens.find(
             (t) => t.symbol.toUpperCase() === action.token.toUpperCase(),
           );
           if (!bridgeToken)
             throw new Error(
-              `${action.token} is not available for bridging from Ethereum on this network. ` +
-                `Supported: ${bridgeTokens.map((t) => t.symbol).join(", ")}`,
+              `${action.token} not available for bridging. Supported: ${bridgeTokens.map((t) => t.symbol).join(", ")}`,
             );
-          // Step 3: Execute the bridge deposit
           const ethTxHash = await executeBridge(
             bridgeToken,
             action.amount,
@@ -447,7 +596,7 @@ export function AIExecutor() {
             txHash: ethTxHash,
           });
           txHash = ethTxHash;
-          resultText = `${action.amount} ${action.token} bridge initiated from Ethereum → Starknet. Funds arrive in ~10 min.`;
+          resultText = `${action.amount} ${action.token} bridge initiated — funds arrive in ~10 min`;
           break;
         }
         case "dca": {
@@ -473,7 +622,7 @@ export function AIExecutor() {
               : action.frequency === "P1M"
                 ? "monthly"
                 : "weekly";
-          resultText = `DCA set up — selling ${action.amount} ${action.token} → ${action.toToken} ${freqLabel}`;
+          resultText = `DCA active — selling ${action.amount} ${action.token} → ${action.toToken} ${freqLabel}`;
           break;
         }
         case "borrow": {
@@ -508,11 +657,9 @@ export function AIExecutor() {
           throw new Error(`Unknown action: ${action.type}`);
       }
 
-      // Toast is the primary notification — clickable link to Starkscan
-      showToast({ type: "success", title: resultText, txHash });
       refreshBalances();
 
-      // Mark action done inline; no extra chat message (toast handles it)
+      // Mark action done on the original message
       setMessages((prev) =>
         prev.map((m) => {
           if (m.id !== msgId || !m.actions) return m;
@@ -527,34 +674,33 @@ export function AIExecutor() {
           };
         }),
       );
+
+      // ── Post result as a chat message instead of a toast ──────────────────
+      addMessage({ role: "result-success", text: resultText, txHash });
     } catch (err: any) {
       updateMessage(msgId, { executing: false });
-      // Parse common SDK errors into friendly messages
+
       let errMsg = err.message ?? "Unknown error";
       if (
         errMsg.includes("paymaster") ||
         errMsg.includes("gas") ||
         errMsg.includes("fee")
       ) {
-        const isLending =
-          action.type === "unstake" ||
-          action.type === "save" ||
-          action.type === "invest" ||
-          action.type === "stake";
+        const isLending = ["unstake", "save", "invest", "stake"].includes(
+          action.type,
+        );
         errMsg = isLending
-          ? "Transaction failed — Vesu lending on Sepolia may not support this token, or the paymaster couldn't cover gas. Try with STRK."
-          : "Transaction failed — make sure you have STRK to cover gas, or the paymaster may not support this token pair on Sepolia.";
+          ? "Vesu lending on Sepolia may not support this token, or the paymaster couldn't cover gas. Try with STRK."
+          : "Make sure you have STRK for gas, or the paymaster may not support this token pair on Sepolia.";
       } else if (
         errMsg.includes("insufficient") ||
         errMsg.includes("balance")
       ) {
         errMsg = `Insufficient balance for this transaction.`;
       }
-      showToast({
-        type: "error",
-        title: "Transaction failed",
-        message: errMsg,
-      });
+
+      // ── Post error as a chat message instead of a toast ───────────────────
+      addMessage({ role: "result-error", text: errMsg });
     }
   };
 
@@ -575,117 +721,119 @@ export function AIExecutor() {
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      {/* ── Portfolio bar ───────────────────────────────────────────────── */}
-      <PortfolioBar />
+    <>
+      {/* Keyframe for typing dots — injected once */}
+      <style>{`
+        @keyframes typing-bounce {
+          0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+          30% { transform: translateY(-5px); opacity: 1; }
+        }
+      `}</style>
 
-      {/* ── Messages ────────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-5 space-y-5 max-w-3xl mx-auto w-full">
-        {messages.map((msg) => (
-          <ChatBubble
-            key={msg.id}
-            msg={msg}
-            balances={balances}
-            onExecuteAction={(action, idx) =>
-              handleExecuteAction(msg.id, action, idx)
-            }
-            onExecuteAll={(actions) => handleExecuteAll(msg.id, actions)}
-          />
-        ))}
+      <div className="h-full flex flex-col overflow-hidden">
+        {/* ── Portfolio bar ─────────────────────────────────────────────── */}
+        <PortfolioBar />
 
-        {loading && (
-          <div className="flex items-center gap-1.5 pl-10">
-            {[0, 1, 2].map((i) => (
-              <span
-                key={i}
-                className="w-1 h-1 rounded-full bg-zinc-600 animate-blink"
-                style={{ animationDelay: `${i * 200}ms` }}
+        {/* ── Messages ──────────────────────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-5 space-y-5 max-w-3xl mx-auto w-full">
+          {messages.map((msg) =>
+            msg.role === "result-success" || msg.role === "result-error" ? (
+              <ResultBubble key={msg.id} msg={msg} />
+            ) : (
+              <ChatBubble
+                key={msg.id}
+                msg={msg}
+                balances={balances}
+                onExecuteAction={(action, idx) =>
+                  handleExecuteAction(msg.id, action, idx)
+                }
+                onExecuteAll={(actions) => handleExecuteAll(msg.id, actions)}
               />
+            ),
+          )}
+
+          {loading && <TypingIndicator />}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* ── Quick commands + input ─────────────────────────────────────── */}
+        <div className="border-t border-surface-border bg-surface">
+          <div className="px-4 sm:px-8 pt-3 pb-2 flex gap-2 flex-wrap max-w-3xl mx-auto w-full">
+            {QUICK_COMMANDS.map((cmd) => (
+              <button
+                key={cmd.label}
+                onClick={() => handleQuickCommand(cmd)}
+                disabled={loading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-card border border-surface-border text-zinc-600 hover:text-zinc-200 hover:border-zinc-700 transition-all duration-150 text-xs font-mono disabled:opacity-30"
+              >
+                {cmd.icon}
+                {cmd.label}
+              </button>
             ))}
           </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
 
-      {/* ── Quick commands + input ───────────────────────────────────────── */}
-      <div className="border-t border-surface-border bg-surface">
-        {/* Quick command chips */}
-        <div className="px-4 sm:px-8 pt-3 pb-2 flex gap-2 flex-wrap max-w-3xl mx-auto w-full">
-          {QUICK_COMMANDS.map((cmd) => (
-            <button
-              key={cmd.label}
-              onClick={() => handleQuickCommand(cmd)}
+          <div className="px-4 sm:px-8 pb-4 flex gap-3 max-w-3xl mx-auto w-full">
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder='e.g. "send 5 STRK to alice@gmail.com" or "swap 1 STRK to USDC"'
+              className="flex-1 bg-surface-card border border-surface-border rounded-xl px-4 py-3 font-mono text-sm text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-600 transition-colors"
               disabled={loading}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-card border border-surface-border text-zinc-600 hover:text-zinc-200 hover:border-zinc-700 transition-all duration-150 text-xs font-mono disabled:opacity-30"
+              autoFocus
+            />
+            <button
+              onClick={() => handleSend()}
+              disabled={!input.trim() || loading}
+              className="px-5 py-3 bg-accent text-black text-sm font-bold rounded-xl hover:bg-accent-dim transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0 flex items-center gap-2"
             >
-              {cmd.icon}
-              {cmd.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Text input */}
-        <div className="px-4 sm:px-8 pb-4 flex gap-3 max-w-3xl mx-auto w-full">
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder='e.g. "send 5 STRK to alice@gmail.com" or "swap 1 STRK to USDC"'
-            className="flex-1 bg-surface-card border border-surface-border rounded-xl px-4 py-3 font-mono text-sm text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-600 transition-colors"
-            disabled={loading}
-            autoFocus
-          />
-          <button
-            onClick={() => handleSend()}
-            disabled={!input.trim() || loading}
-            className="px-5 py-3 bg-accent text-black text-sm font-bold rounded-xl hover:bg-accent-dim transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0 flex items-center gap-2"
-          >
-            {loading ? (
-              <svg
-                className="w-4 h-4 animate-spin"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
+              {loading ? (
+                <svg
+                  className="w-4 h-4 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
                   stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                />
-              </svg>
-            ) : (
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2.5}
-                  d="M5 12h14M12 5l7 7-7 7"
-                />
-              </svg>
-            )}
-          </button>
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M5 12h14M12 5l7 7-7 7"
+                  />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -702,12 +850,6 @@ function ChatBubble({
   onExecuteAction: (action: EnrichedAction, idx: number) => void;
   onExecuteAll: (actions: EnrichedAction[]) => void;
 }) {
-  if (msg.role === "system") {
-    // System messages are just thin dividers — not shown anymore for tx results
-    // (toasts handle those). Only show for genuine system events.
-    return null;
-  }
-
   const isUser = msg.role === "user";
 
   return (
@@ -716,29 +858,20 @@ function ChatBubble({
     >
       {/* AI avatar */}
       {!isUser && (
-        <div className="w-7 h-7 rounded-lg bg-accent/10  flex items-center justify-center shrink-0 mt-0.5">
-          <svg
-            width="200"
-            height="200"
-            viewBox="0 0 200 200"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <rect width="200" height="200" rx="24" fill="#0B0B0B" />
-
+        <div className="w-7 h-7 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 mt-0.5">
+          <svg width="16" height="16" viewBox="0 0 200 200" fill="none">
             <path
               d="M50 60H150L50 140H150"
               stroke="#00E5FF"
-              stroke-width="10"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="10"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
-
             <path
               d="M60 60L140 140M140 60L60 140"
               stroke="#00E5FF"
-              stroke-width="6"
-              stroke-linecap="round"
+              strokeWidth="6"
+              strokeLinecap="round"
             />
           </svg>
         </div>
@@ -800,7 +933,6 @@ function ActionCard({
   executing: boolean;
   onExecute: () => void;
 }) {
-  // Bridge funds come from the Ethereum wallet, not the Starknet wallet — skip balance check
   const isBridge = action.type === "bridge";
   const available = parseFloat(balances[action.token] ?? "0");
   const amount = parseFloat(action.amount);
@@ -822,14 +954,16 @@ function ActionCard({
 
   return (
     <div
-      className={`rounded-xl border overflow-hidden transition-colors ${
+      className={`rounded-xl border overflow-hidden transition-all duration-300 ${
         action._done
           ? "border-green-500/20 bg-green-500/5"
           : insufficientFunds
             ? "border-red-500/20 bg-red-500/5"
             : !action.ready
               ? "border-zinc-800 bg-surface"
-              : "border-surface-border bg-surface-card hover:border-zinc-700"
+              : executing && !action._done
+                ? "border-accent/30 bg-accent/5 animate-pulse"
+                : "border-surface-border bg-surface-card hover:border-zinc-700"
       }`}
     >
       <div className="px-4 py-3.5 flex items-center gap-4">
