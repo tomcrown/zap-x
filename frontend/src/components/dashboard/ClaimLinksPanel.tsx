@@ -70,13 +70,13 @@ function ClaimRow({ claim, onCancel }: { claim: ClaimLink; onCancel: (token: str
 export function ClaimLinksPanel() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { isAuthenticated, walletAddress } = useWallet();
+  const { isAuthenticated, walletAddress, profile } = useWallet();
 
   const { data, isLoading } = useQuery({
     queryKey: ['claim-links'],
     queryFn: claimApi.list,
     refetchInterval: 30_000,
-    enabled: isAuthenticated && !!walletAddress,
+    enabled: isAuthenticated && !!walletAddress && !!profile,
   });
 
   const cancelMutation = useMutation({

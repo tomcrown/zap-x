@@ -13,13 +13,7 @@ import {
 
 const router = Router();
 
-/**
- * POST /api/transfer/prepare
- *
- * Step 1: Resolve recipient and tell the frontend what address to send to.
- * If recipient has no wallet, returns escrow address + flag.
- * Frontend then executes the on-chain transaction.
- */
+// POST /api/transfer/prepare
 router.post('/prepare', requireAuth as any, validate(prepareTransferSchema), async (req: AuthenticatedRequest, res, next) => {
   try {
     const result = await prepareTransfer(req.body);
@@ -33,33 +27,20 @@ router.post('/prepare', requireAuth as any, validate(prepareTransferSchema), asy
   }
 });
 
-/**
- * POST /api/transfer/confirm
- *
- * Step 2: After the frontend has submitted the on-chain transaction,
- * record it in the DB and (if escrow) create the claim link + send email.
- */
+// POST /api/transfer/confirm
 router.post('/confirm', requireAuth as any, validate(confirmTransferSchema), async (req: AuthenticatedRequest, res, next) => {
   try {
     const response = await recordConfirmedTransfer(req.body);
     res.json(response);
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
-/**
- * GET /api/transfer/history
- *
- * Returns the last 100 sent/received transactions for the authenticated wallet.
- */
-router.get('/history', requireAuth as any, (req: AuthenticatedRequest, res, next) => {
+// GET /api/transfer/history
+router.get('/history', requireAuth as any, async (req: AuthenticatedRequest, res, next) => {
   try {
-    const txs = getTransactionHistory(req.user!.walletAddress);
+    const txs = await getTransactionHistory(req.user!.walletAddress);
     res.json({ transactions: txs });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
 export default router;

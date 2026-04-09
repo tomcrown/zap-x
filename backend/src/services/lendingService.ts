@@ -1,10 +1,5 @@
 /**
  * LendingService
- *
- * Tracks lending positions in our local DB for dashboard display.
- * Actual on-chain lending is executed by the frontend via the Starkzap SDK
- * (wallet.lending().deposit / withdraw). After execution, the frontend
- * calls our API to record the position.
  */
 
 import getDb from '../db/database.js';
@@ -31,59 +26,60 @@ export interface LendingStats {
 
 // ─── Record Deposit ────────────────────────────────────────────────────────────
 
-export function recordDeposit(params: {
+export async function recordDeposit(params: {
   userWallet: string;
   token: TokenSymbol;
   amount: string;
   txHash: string;
-}): DbLendingPosition {
-  const db = getDb();
-  return db.prepare(`
+}): Promise<DbLendingPosition> {
+  const [row] = await getDb()<DbLendingPosition[]>`
     INSERT INTO lending_positions (user_wallet, token, supplied_amount, entry_tx_hash, status)
-    VALUES (?, ?, ?, ?, 'active')
+    VALUES (${params.userWallet}, ${params.token}, ${params.amount}, ${params.txHash}, 'active')
     RETURNING *
-  `).get(params.userWallet, params.token, params.amount, params.txHash) as DbLendingPosition;
+  `;
+  return row;
 }
 
 // ─── Record Withdraw ───────────────────────────────────────────────────────────
 
-export function recordWithdraw(params: {
+export async function recordWithdraw(params: {
   positionId: number;
   userWallet: string;
   txHash: string;
-}): void {
-  getDb().prepare(`
+}): Promise<void> {
+  await getDb()`
     UPDATE lending_positions
-    SET status = 'withdrawn', updated_at = datetime('now')
-    WHERE id = ? AND user_wallet = ?
-  `).run(params.positionId, params.userWallet);
+    SET status = 'withdrawn', updated_at = NOW()
+    WHERE id = ${params.positionId} AND user_wallet = ${params.userWallet}
+  `;
 }
 
 // ─── Get Positions ─────────────────────────────────────────────────────────────
 
-export function getLendingPositions(userWallet: string): DbLendingPosition[] {
-  return getDb()
-    .prepare('SELECT * FROM lending_positions WHERE user_wallet = ? ORDER BY created_at DESC')
-    .all(userWallet) as DbLendingPosition[];
+export async function getLendingPositions(userWallet: string): Promise<DbLendingPosition[]> {
+  return getDb()<DbLendingPosition[]>`
+    SELECT * FROM lending_positions WHERE user_wallet = ${userWallet} ORDER BY created_at DESC
+  `;
 }
 
-export function getActiveLendingPositions(userWallet: string): DbLendingPosition[] {
-  return getDb()
-    .prepare("SELECT * FROM lending_positions WHERE user_wallet = ? AND status = 'active' ORDER BY created_at DESC")
-    .all(userWallet) as DbLendingPosition[];
+export async function getActiveLendingPositions(userWallet: string): Promise<DbLendingPosition[]> {
+  return getDb()<DbLendingPosition[]>`
+    SELECT * FROM lending_positions
+    WHERE user_wallet = ${userWallet} AND status = 'active'
+    ORDER BY created_at DESC
+  `;
 }
 
 // ─── Stats ─────────────────────────────────────────────────────────────────────
 
-export function getLendingStats(userWallet: string): LendingStats {
-  const positions = getActiveLendingPositions(userWallet);
+export async function getLendingStats(userWallet: string): Promise<LendingStats> {
+  const positions = await getActiveLendingPositions(userWallet);
 
   let total = 0;
   for (const p of positions) {
     total += parseFloat(p.supplied_amount) || 0;
   }
 
-  // Approximate Vesu STRK supply APY ~4-8%
   const projectedYield = (total * 0.06).toFixed(4);
 
   return {

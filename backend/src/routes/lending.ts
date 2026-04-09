@@ -28,60 +28,50 @@ const voidSchema = z.object({
 });
 
 // GET /api/lending/stats
-router.get('/stats', requireAuth as any, (req: AuthenticatedRequest, res, next) => {
+router.get('/stats', requireAuth as any, async (req: AuthenticatedRequest, res, next) => {
   try {
-    const stats = getLendingStats(req.user!.walletAddress);
+    const stats = await getLendingStats(req.user!.walletAddress);
     res.json({ stats });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
 // GET /api/lending/positions
-router.get('/positions', requireAuth as any, (req: AuthenticatedRequest, res, next) => {
+router.get('/positions', requireAuth as any, async (req: AuthenticatedRequest, res, next) => {
   try {
-    const positions = getLendingPositions(req.user!.walletAddress);
+    const positions = await getLendingPositions(req.user!.walletAddress);
     res.json({ positions });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
-// POST /api/lending/deposit — record after on-chain deposit
-router.post('/deposit', requireAuth as any, validate(depositSchema), (req: AuthenticatedRequest, res, next) => {
+// POST /api/lending/deposit
+router.post('/deposit', requireAuth as any, validate(depositSchema), async (req: AuthenticatedRequest, res, next) => {
   try {
-    const position = recordDeposit({ userWallet: req.user!.walletAddress, ...req.body });
+    const position = await recordDeposit({ userWallet: req.user!.walletAddress, ...req.body });
     res.json({ success: true, position });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
-// POST /api/lending/withdraw — mark position withdrawn
-router.post('/withdraw', requireAuth as any, validate(withdrawSchema), (req: AuthenticatedRequest, res, next) => {
+// POST /api/lending/withdraw
+router.post('/withdraw', requireAuth as any, validate(withdrawSchema), async (req: AuthenticatedRequest, res, next) => {
   try {
-    recordWithdraw({ userWallet: req.user!.walletAddress, ...req.body });
+    await recordWithdraw({ userWallet: req.user!.walletAddress, ...req.body });
     res.json({ success: true });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
-// POST /api/lending/void — mark orphaned positions (no on-chain shares) as withdrawn
-router.post('/void', requireAuth as any, validate(voidSchema), (req: AuthenticatedRequest, res, next) => {
+// POST /api/lending/void
+router.post('/void', requireAuth as any, validate(voidSchema), async (req: AuthenticatedRequest, res, next) => {
   try {
-    const { positionIds } = req.body;
-    const db = getDb();
-    const stmt = db.prepare(
-      `UPDATE lending_positions SET status = 'withdrawn', updated_at = datetime('now') WHERE id = ? AND user_wallet = ?`
+    const { positionIds } = req.body as { positionIds: number[] };
+    const sql = getDb();
+    await Promise.all(
+      positionIds.map((id) =>
+        sql`UPDATE lending_positions SET status = 'withdrawn', updated_at = NOW()
+            WHERE id = ${id} AND user_wallet = ${req.user!.walletAddress}`
+      )
     );
-    for (const id of positionIds) {
-      stmt.run(id, req.user!.walletAddress);
-    }
     res.json({ success: true, cleared: positionIds.length });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
 export default router;

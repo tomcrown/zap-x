@@ -16,17 +16,17 @@ const swapRecordSchema = z.object({
 });
 
 // GET /api/swap/history
-router.get('/history', requireAuth as any, (req: AuthenticatedRequest, res, next) => {
+router.get('/history', requireAuth as any, async (req: AuthenticatedRequest, res, next) => {
   try {
-    const swaps = getSwapHistory(req.user!.walletAddress);
+    const swaps = await getSwapHistory(req.user!.walletAddress);
     res.json({ swaps });
   } catch (err) { next(err); }
 });
 
-// POST /api/swap/record — called after on-chain swap succeeds
-router.post('/record', requireAuth as any, validate(swapRecordSchema), (req: AuthenticatedRequest, res, next) => {
+// POST /api/swap/record
+router.post('/record', requireAuth as any, validate(swapRecordSchema), async (req: AuthenticatedRequest, res, next) => {
   try {
-    const swap = recordSwap({ userWallet: req.user!.walletAddress, ...req.body });
+    const swap = await recordSwap({ userWallet: req.user!.walletAddress, ...req.body });
     res.json({ success: true, swap });
   } catch (err) { next(err); }
 });

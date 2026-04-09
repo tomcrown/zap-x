@@ -68,6 +68,6 @@ export const config = {
   },
 
   db: {
-    path: optional('DB_PATH', './data/zapx.db'),
+    url: required('DATABASE_URL'),
   },
 } as const;

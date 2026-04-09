@@ -47,28 +47,37 @@ export async function requireAuth(
     return;
   }
 
+  let claims: Awaited<ReturnType<typeof privy.verifyAuthToken>>;
   try {
-    const claims = await privy.verifyAuthToken(token);
-
-    const user = await privy.getUser(claims.userId);
-
-    // Our wallets are server-owned, so they don't appear in Privy's linkedAccounts.
-    // Look up the wallet address from our DB using the Privy user ID.
-    const db = getDb();
-    const dbUser = db
-      .prepare('SELECT wallet_address FROM users WHERE privy_user_id = ?')
-      .get(claims.userId) as { wallet_address: string } | undefined;
-
-    req.user = {
-      privyUserId: claims.userId,
-      walletAddress: dbUser?.wallet_address ?? '',
-      email: (user.linkedAccounts as any[]).find((a: any) => a.type === 'email')?.address,
-    };
-
-    next();
+    claims = await privy.verifyAuthToken(token);
   } catch (err: any) {
     console.error('[Auth] verifyAuthToken failed:', err?.message ?? err);
     res.status(401).json({ error: 'Invalid or expired auth token.' });
+    return;
+  }
+
+  try {
+    const [user, dbUser] = await Promise.allSettled([
+      privy.getUser(claims.userId),
+      getDb()<{ wallet_address: string }[]>`
+        SELECT wallet_address FROM users WHERE privy_user_id = ${claims.userId}
+      `,
+    ]);
+
+    const email = user.status === 'fulfilled'
+      ? (user.value.linkedAccounts as any[]).find((a: any) => a.type === 'email')?.address
+      : undefined;
+
+    const walletAddress = dbUser.status === 'fulfilled'
+      ? (dbUser.value[0]?.wallet_address ?? '')
+      : '';
+
+    req.user = { privyUserId: claims.userId, walletAddress, email };
+
+    next();
+  } catch (err: any) {
+    console.error('[Auth] DB/user lookup failed:', err?.message ?? err);
+    next(err);
   }
 }
 

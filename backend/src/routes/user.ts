@@ -4,14 +4,12 @@ import { validate, registerUserSchema } from '../middleware/validation.js';
 import {
   registerUser,
   lookupByIdentifier,
-  lookupByUsername,
-  lookupByEmail,
   lookupByAddress,
 } from '../services/walletService.js';
 
 const router = Router();
 
-// POST /api/users/register — Register or update user profile
+// POST /api/users/register
 router.post('/register', requireAuth as any, validate(registerUserSchema), async (req: AuthenticatedRequest, res, next) => {
   try {
     const profile = await registerUser({
@@ -26,10 +24,10 @@ router.post('/register', requireAuth as any, validate(registerUserSchema), async
   }
 });
 
-// GET /api/users/me — Get current user profile
+// GET /api/users/me
 router.get('/me', requireAuth as any, async (req: AuthenticatedRequest, res, next) => {
   try {
-    const profile = lookupByAddress(req.user!.walletAddress);
+    const profile = await lookupByAddress(req.user!.walletAddress);
     if (!profile) {
       res.status(404).json({ error: 'Profile not found. Please register first.' });
       return;
@@ -40,21 +38,18 @@ router.get('/me', requireAuth as any, async (req: AuthenticatedRequest, res, nex
   }
 });
 
-// GET /api/users/lookup/:identifier — Resolve username/email/address to wallet
+// GET /api/users/lookup/:identifier
 router.get('/lookup/:identifier', async (req, res, next) => {
   try {
-    const { identifier } = req.params;
-    const profile = lookupByIdentifier(identifier);
+    const profile = await lookupByIdentifier(req.params.identifier);
     if (!profile) {
       res.status(404).json({ found: false, message: 'User not found.' });
       return;
     }
-    // Return only safe fields (no internal id)
     res.json({
       found: true,
       walletAddress: profile.walletAddress,
       username: profile.username,
-      // Do NOT return email in lookup (privacy)
     });
   } catch (err) {
     next(err);

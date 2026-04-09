@@ -67,11 +67,11 @@ function TxRow({ tx, myAddress }: { tx: Transaction; myAddress: string }) {
 }
 
 export function TransactionList() {
-  const { walletAddress } = useWallet();
+  const { walletAddress, profile } = useWallet();
   const { data, isLoading, error } = useQuery({
     queryKey: ['transactions', walletAddress],
     queryFn: transferApi.history,
-    enabled: !!walletAddress,
+    enabled: !!walletAddress && !!profile,
     refetchInterval: 30_000,
   });
 

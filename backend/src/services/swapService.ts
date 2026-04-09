@@ -13,7 +13,7 @@ export interface DbSwap {
   created_at: string;
 }
 
-export function recordSwap(params: {
+export async function recordSwap(params: {
   userWallet: string;
   tokenIn: TokenSymbol;
   tokenOut: TokenSymbol;
@@ -21,19 +21,20 @@ export function recordSwap(params: {
   amountOut: string;
   txHash: string;
   provider: string;
-}): DbSwap {
-  return getDb().prepare(`
+}): Promise<DbSwap> {
+  const [row] = await getDb()<DbSwap[]>`
     INSERT INTO swaps (user_wallet, token_in, token_out, amount_in, amount_out, tx_hash, provider)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    VALUES (
+      ${params.userWallet}, ${params.tokenIn}, ${params.tokenOut},
+      ${params.amountIn}, ${params.amountOut}, ${params.txHash}, ${params.provider}
+    )
     RETURNING *
-  `).get(
-    params.userWallet, params.tokenIn, params.tokenOut,
-    params.amountIn, params.amountOut, params.txHash, params.provider
-  ) as DbSwap;
+  `;
+  return row;
 }
 
-export function getSwapHistory(userWallet: string): DbSwap[] {
-  return getDb()
-    .prepare('SELECT * FROM swaps WHERE user_wallet = ? ORDER BY created_at DESC LIMIT 50')
-    .all(userWallet) as DbSwap[];
+export async function getSwapHistory(userWallet: string): Promise<DbSwap[]> {
+  return getDb()<DbSwap[]>`
+    SELECT * FROM swaps WHERE user_wallet = ${userWallet} ORDER BY created_at DESC LIMIT 50
+  `;
 }

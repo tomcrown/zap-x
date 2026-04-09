@@ -21,36 +21,39 @@ const cancelSchema = z.object({
   txHash:       z.string().regex(/^0x[0-9a-fA-F]+$/),
 });
 
-// GET /api/dca/orders — local records for the authenticated wallet
-router.get('/orders', requireAuth as any, (req: AuthenticatedRequest, res, next) => {
+// GET /api/dca/orders
+router.get('/orders', requireAuth as any, async (req: AuthenticatedRequest, res, next) => {
   try {
-    const rows = getDb()
-      .prepare(`SELECT * FROM dca_records WHERE user_wallet = ? ORDER BY created_at DESC`)
-      .all(req.user!.walletAddress) as DcaRecord[];
+    const rows = await getDb()<DcaRecord[]>`
+      SELECT * FROM dca_records WHERE user_wallet = ${req.user!.walletAddress} ORDER BY created_at DESC
+    `;
     res.json({ orders: rows });
   } catch (err) { next(err); }
 });
 
-// POST /api/dca/record — save after on-chain DCA creation
-router.post('/record', requireAuth as any, validate(recordSchema), (req: AuthenticatedRequest, res, next) => {
+// POST /api/dca/record
+router.post('/record', requireAuth as any, validate(recordSchema), async (req: AuthenticatedRequest, res, next) => {
   try {
     const { sellToken, buyToken, amountPerCycle, frequency, txHash, orderAddress } = req.body;
-    const row = getDb().prepare(`
+    const [row] = await getDb()<DcaRecord[]>`
       INSERT INTO dca_records (user_wallet, sell_token, buy_token, amount_per_cycle, frequency, order_address, tx_hash)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      VALUES (
+        ${req.user!.walletAddress}, ${sellToken}, ${buyToken},
+        ${amountPerCycle}, ${frequency}, ${orderAddress ?? null}, ${txHash}
+      )
       RETURNING *
-    `).get(req.user!.walletAddress, sellToken, buyToken, amountPerCycle, frequency, orderAddress ?? null, txHash) as DcaRecord;
+    `;
     res.json({ success: true, order: row });
   } catch (err) { next(err); }
 });
 
-// POST /api/dca/cancel — mark local record cancelled
-router.post('/cancel', requireAuth as any, validate(cancelSchema), (req: AuthenticatedRequest, res, next) => {
+// POST /api/dca/cancel
+router.post('/cancel', requireAuth as any, validate(cancelSchema), async (req: AuthenticatedRequest, res, next) => {
   try {
-    const { orderAddress } = req.body;
-    getDb().prepare(`
-      UPDATE dca_records SET status = 'cancelled' WHERE order_address = ? AND user_wallet = ?
-    `).run(orderAddress, req.user!.walletAddress);
+    await getDb()`
+      UPDATE dca_records SET status = 'cancelled'
+      WHERE order_address = ${req.body.orderAddress} AND user_wallet = ${req.user!.walletAddress}
+    `;
     res.json({ success: true });
   } catch (err) { next(err); }
 });

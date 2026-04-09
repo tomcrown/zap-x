@@ -1,23 +1,12 @@
 /**
  * StakingService
- *
- * Tracks staking positions in our local DB so the dashboard can display
- * them without querying the blockchain on every request.
- *
- * The actual on-chain staking is performed by the FRONTEND using the
- * Starkzap SDK (wallet.stake / wallet.exitPoolIntent / wallet.exitPool).
- * After the frontend executes a staking transaction, it calls our API
- * to record the position.
  */
 
 import getDb from '../db/database.js';
-import { DbStakingPosition, StakeStatus, TokenSymbol } from '../models/types.js';
-import { config } from '../config/index.js';
+import { DbStakingPosition, TokenSymbol } from '../models/types.js';
 
 // ─── Named Pools ───────────────────────────────────────────────────────────────
 
-// Pool addresses are validator stakerAddresses (not the staking contract).
-// These come from sepoliaValidators in the Starkzap SDK.
 export const STAKING_POOLS: Record<string, { name: string; token: TokenSymbol; apy: string }> = {
   '0x003bc84d802c8a57cbe4eb4a6afa9b1255e907cba9377b446d6f4edf069403c5': {
     name: 'moonli.me',
@@ -38,73 +27,76 @@ export const STAKING_POOLS: Record<string, { name: string; token: TokenSymbol; a
 
 // ─── Record Staking Position ───────────────────────────────────────────────────
 
-export function recordStake(params: {
+export async function recordStake(params: {
   userWallet: string;
   poolAddress: string;
   amount: string;
   token: TokenSymbol;
   txHash: string;
-}): DbStakingPosition {
-  const db = getDb();
+}): Promise<DbStakingPosition> {
+  const sql = getDb();
   const pool = STAKING_POOLS[params.poolAddress];
 
-  const stmt = db.prepare(`
+  const [row] = await sql<DbStakingPosition[]>`
     INSERT INTO staking_positions
       (user_wallet, pool_address, pool_name, token, staked_amount, entry_tx_hash, status)
-    VALUES (?, ?, ?, ?, ?, ?, 'active')
+    VALUES (
+      ${params.userWallet},
+      ${params.poolAddress},
+      ${pool?.name ?? 'Unknown Pool'},
+      ${params.token},
+      ${params.amount},
+      ${params.txHash},
+      'active'
+    )
     RETURNING *
-  `);
+  `;
 
-  return stmt.get(
-    params.userWallet,
-    params.poolAddress,
-    pool?.name ?? 'Unknown Pool',
-    params.token,
-    params.amount,
-    params.txHash
-  ) as DbStakingPosition;
+  return row;
 }
 
 // ─── Record Exit Intent ────────────────────────────────────────────────────────
 
-export function recordExitIntent(params: {
+export async function recordExitIntent(params: {
   positionId: number;
   userWallet: string;
   txHash: string;
-}): void {
-  getDb().prepare(`
+}): Promise<void> {
+  await getDb()`
     UPDATE staking_positions
-    SET status = 'exiting', exit_intent_tx_hash = ?, updated_at = datetime('now')
-    WHERE id = ? AND user_wallet = ?
-  `).run(params.txHash, params.positionId, params.userWallet);
+    SET status = 'exiting', exit_intent_tx_hash = ${params.txHash}, updated_at = NOW()
+    WHERE id = ${params.positionId} AND user_wallet = ${params.userWallet}
+  `;
 }
 
 // ─── Record Full Exit ──────────────────────────────────────────────────────────
 
-export function recordExit(params: {
+export async function recordExit(params: {
   positionId: number;
   userWallet: string;
   txHash: string;
-}): void {
-  getDb().prepare(`
+}): Promise<void> {
+  await getDb()`
     UPDATE staking_positions
-    SET status = 'withdrawn', updated_at = datetime('now')
-    WHERE id = ? AND user_wallet = ?
-  `).run(params.positionId, params.userWallet);
+    SET status = 'withdrawn', updated_at = NOW()
+    WHERE id = ${params.positionId} AND user_wallet = ${params.userWallet}
+  `;
 }
 
 // ─── Get Positions ─────────────────────────────────────────────────────────────
 
-export function getStakingPositions(userWallet: string): DbStakingPosition[] {
-  return getDb()
-    .prepare('SELECT * FROM staking_positions WHERE user_wallet = ? ORDER BY created_at DESC')
-    .all(userWallet) as DbStakingPosition[];
+export async function getStakingPositions(userWallet: string): Promise<DbStakingPosition[]> {
+  return getDb()<DbStakingPosition[]>`
+    SELECT * FROM staking_positions WHERE user_wallet = ${userWallet} ORDER BY created_at DESC
+  `;
 }
 
-export function getActivePositions(userWallet: string): DbStakingPosition[] {
-  return getDb()
-    .prepare("SELECT * FROM staking_positions WHERE user_wallet = ? AND status = 'active' ORDER BY created_at DESC")
-    .all(userWallet) as DbStakingPosition[];
+export async function getActivePositions(userWallet: string): Promise<DbStakingPosition[]> {
+  return getDb()<DbStakingPosition[]>`
+    SELECT * FROM staking_positions
+    WHERE user_wallet = ${userWallet} AND status = 'active'
+    ORDER BY created_at DESC
+  `;
 }
 
 // ─── Dashboard Stats ───────────────────────────────────────────────────────────
@@ -113,13 +105,12 @@ export interface StakingStats {
   totalStaked: string;
   positions: DbStakingPosition[];
   pools: typeof STAKING_POOLS;
-  projectedAnnualYield: string; // approximate, based on APY
+  projectedAnnualYield: string;
 }
 
-export function getStakingStats(userWallet: string): StakingStats {
-  const positions = getActivePositions(userWallet);
+export async function getStakingStats(userWallet: string): Promise<StakingStats> {
+  const positions = await getActivePositions(userWallet);
 
-  // Sum staked amounts (same token assumed for simplicity; extend for multi-token)
   let total = 0n;
   for (const p of positions) {
     try {
@@ -130,7 +121,6 @@ export function getStakingStats(userWallet: string): StakingStats {
   }
 
   const totalStakedFloat = Number(total) / 1e18;
-  // Rough projected yield at ~8.5% APY
   const projectedYield = (totalStakedFloat * 0.085).toFixed(4);
 
   return {

@@ -7,6 +7,7 @@
  */
 
 import { useState, useRef, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   chatApi,
   transferApi,
@@ -810,6 +811,7 @@ function ResultBubble({ msg }: { msg: Message }) {
 
 export function AIExecutor() {
   const { walletAddress, balances, refreshBalances, profile } = useWallet();
+  const queryClient = useQueryClient();
   const greeting = profile?.username ? `@${profile.username}` : "there";
 
   const [messages, setMessages] = useState<Message[]>([
@@ -1080,6 +1082,8 @@ export function AIExecutor() {
       );
 
       addMessage({ role: "result-success", text: resultText, txHash });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["claim-links"] });
     } catch (err: any) {
       updateMessage(msgId, { executing: false });
 
