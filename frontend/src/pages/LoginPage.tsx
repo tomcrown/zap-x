@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useWallet } from "../contexts/WalletContext.js";
 
@@ -19,7 +19,7 @@ function useScrollReveal() {
   }, []);
 }
 
-// ── Animated three-node background ───────────────────────────────────────────
+// ── Animated node background ──────────────────────────────────────────────────
 function NodeBackground() {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none select-none">
@@ -33,18 +33,11 @@ function NodeBackground() {
         }}
       />
 
-      {/* SVG nodes + connecting lines */}
+      {/* SVG connecting lines */}
       <svg
         className="absolute inset-0 w-full h-full opacity-[0.18]"
         preserveAspectRatio="none"
       >
-        <defs>
-          <marker id="dot" markerWidth="4" markerHeight="4" refX="2" refY="2">
-            <circle cx="2" cy="2" r="1.5" fill="#22d3ee" />
-          </marker>
-        </defs>
-
-        {/* Lines — approximate positions; purely decorative */}
         <line
           x1="15%"
           y1="22%"
@@ -69,10 +62,18 @@ function NodeBackground() {
           stroke="#22d3ee"
           strokeWidth="0.5"
         />
+        <line
+          x1="52%"
+          y1="38%"
+          x2="62%"
+          y2="72%"
+          stroke="#22d3ee"
+          strokeWidth="0.5"
+        />
       </svg>
 
       {/* Node 1 — top left */}
-      <div className="node-1 absolute" style={{ top: "19%", left: "14%" }}>
+      <div className="absolute" style={{ top: "19%", left: "14%" }}>
         <div className="relative">
           <div className="w-3 h-3 rounded-full border border-accent/60 bg-accent/10" />
           <div
@@ -83,14 +84,12 @@ function NodeBackground() {
       </div>
 
       {/* Node 2 — bottom right */}
-      <div className="node-2 absolute" style={{ top: "55%", right: "18%" }}>
-        <div className="relative">
-          <div className="w-2 h-2 rounded-full border border-accent/40 bg-accent/10" />
-        </div>
+      <div className="absolute" style={{ top: "55%", right: "18%" }}>
+        <div className="w-2 h-2 rounded-full border border-accent/40 bg-accent/10" />
       </div>
 
-      {/* Node 3 — center right */}
-      <div className="node-3 absolute" style={{ top: "16%", right: "22%" }}>
+      {/* Node 3 — top right */}
+      <div className="absolute" style={{ top: "16%", right: "22%" }}>
         <div className="relative">
           <div className="w-2.5 h-2.5 rounded-full border border-accent/50 bg-accent/10" />
           <div
@@ -99,16 +98,25 @@ function NodeBackground() {
           />
         </div>
       </div>
+
+      {/* Node 4 — bottom left */}
+      <div className="absolute" style={{ top: "70%", left: "22%" }}>
+        <div className="w-2 h-2 rounded-full border border-accent/30 bg-accent/10" />
+      </div>
     </div>
   );
 }
 
+// ── Data ──────────────────────────────────────────────────────────────────────
+
 const EXAMPLES = [
   '"Send 5 STRK to tony@gmail.com"',
   '"Swap 1 ETH to USDC"',
+  '"Send 50 USDC privately to alex@email.com"',
   '"Save 50 USDC and start earning yield"',
-  '"Send 0.001 BTC to alex@email.com"',
+  '"Send 0.001 BTC to sarah@email.com"',
   '"What\'s my current balance?"',
+  '"Stake 100 STRK and earn yield"',
 ];
 
 const FEATURES = [
@@ -129,7 +137,27 @@ const FEATURES = [
       </svg>
     ),
     title: "Send to any email",
-    desc: "Type an email address. If the recipient has no wallet, we escrow the funds and send them a claim link. They create a free wallet in 30 seconds and collect. No crypto knowledge required.",
+    desc: "No wallet required. We escrow funds and email a claim link. They claim in 30 seconds with Google login — no seed phrases, no extensions.",
+    highlight: true,
+  },
+  {
+    icon: (
+      <svg
+        className="w-5 h-5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={1.5}
+          d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+        />
+      </svg>
+    ),
+    title: "Private transfers",
+    desc: "ElGamal encryption + ZK proofs via Tongo. Amount and recipient hidden on-chain. Works with wallet addresses and emails alike.",
     highlight: true,
   },
   {
@@ -149,7 +177,7 @@ const FEATURES = [
       </svg>
     ),
     title: "Zero gas fees",
-    desc: "Every single transaction is completely gasless. AVNU's paymaster covers all fees. You never need to top up for gas.",
+    desc: "Every transaction is completely gasless. AVNU's paymaster covers all fees. You never need to top up for gas.",
     highlight: false,
   },
   {
@@ -194,6 +222,15 @@ const FEATURES = [
   },
 ];
 
+const TOKENS = [
+  { symbol: "STRK", color: "#e2a63c" },
+  { symbol: "USDC", color: "#2775ca" },
+  { symbol: "ETH", color: "#627eea" },
+  { symbol: "BTC", color: "#f7931a" },
+];
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export function LoginPage() {
   const { isAuthenticated, isLoading, login } = useWallet();
   const [exampleIdx, setExampleIdx] = useState(0);
@@ -211,8 +248,9 @@ export function LoginPage() {
 
   return (
     <div className="min-h-screen bg-surface flex flex-col font-sans">
-      {/* ── Nav ───────────────────────────────────────────────────────────── */}
+      {/* ── Nav ─────────────────────────────────────────────────────────── */}
       <nav className="relative z-10 flex items-center justify-between px-6 sm:px-10 py-5">
+        {/* Logo */}
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
             <svg
@@ -223,20 +261,18 @@ export function LoginPage() {
               xmlns="http://www.w3.org/2000/svg"
             >
               <rect width="200" height="200" rx="24" fill="#0B0B0B" />
-
               <path
                 d="M50 60H150L50 140H150"
                 stroke="#00E5FF"
-                stroke-width="10"
-                stroke-linecap="round"
-                stroke-linejoin="round"
+                strokeWidth="10"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               />
-
               <path
                 d="M60 60L140 140M140 60L60 140"
                 stroke="#00E5FF"
-                stroke-width="6"
-                stroke-linecap="round"
+                strokeWidth="6"
+                strokeLinecap="round"
               />
             </svg>
           </div>
@@ -244,29 +280,46 @@ export function LoginPage() {
             Zap<span className="text-accent">-X</span>
           </span>
         </div>
-        <Link
-          to="/docs"
-          className="text-xs font-mono text-white-600 hover:text-zinc-400 transition-colors"
-        >
-          Docs
-        </Link>
+
+        {/* Links */}
+        <div className="hidden sm:flex items-center gap-7">
+          <Link
+            to="/docs"
+            className="text-xs font-mono text-zinc-600 hover:text-zinc-400 transition-colors"
+          >
+            Docs
+          </Link>
+          <a
+            href="#features"
+            className="text-xs font-mono text-zinc-600 hover:text-zinc-400 transition-colors"
+          >
+            Features
+          </a>
+          <a
+            href="#how-it-works"
+            className="text-xs font-mono text-zinc-600 hover:text-zinc-400 transition-colors"
+          >
+            How it works
+          </a>
+        </div>
+
         <button
           onClick={login}
           disabled={isLoading}
-          className="px-5 py-2 bg-accent text-black font-semibold rounded-lg text-sm hover:bg-accent-dim transition-colors disabled:opacity-40"
+          className="px-5 py-2 bg-accent text-black font-bold rounded-lg text-sm hover:bg-accent-dim transition-colors disabled:opacity-40"
         >
           {isLoading ? "Loading…" : "Get started"}
         </button>
       </nav>
 
-      {/* ── Hero ──────────────────────────────────────────────────────────── */}
-      <section className="relative flex-1 flex flex-col items-center justify-center text-center px-6 py-24 min-h-[90vh]">
+      {/* ── Hero ────────────────────────────────────────────────────────── */}
+      <section className="relative flex-1 flex flex-col items-center justify-center text-center px-6 py-24 min-h-[92vh]">
         <NodeBackground />
 
         {/* Status pill */}
         <div
           data-reveal
-          className="relative z-10 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-accent/25 bg-accent/5 text-accent text-xs font-mono mb-2"
+          className="relative z-10 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-accent/25 bg-accent/5 text-accent text-xs font-mono mb-6"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-slow" />
           Live on Starknet Mainnet
@@ -276,7 +329,7 @@ export function LoginPage() {
         <h1
           data-reveal
           data-delay="1"
-          className="relative z-10 text-6xl sm:text-7xl md:text-8xl lg:text-[108px] font-bold text-white leading-[0.92] tracking-tight mb-4"
+          className="relative z-10 text-6xl sm:text-7xl md:text-8xl lg:text-[108px] font-bold text-white leading-[0.92] tracking-tight mb-6"
         >
           The AI wallet
           <br />
@@ -291,10 +344,10 @@ export function LoginPage() {
         >
           Send tokens to anyone's email — no wallet needed on their end.
           <br />
-          Swap, save, and manage your portfolio through a single chat.
+          Swap, save, stake, and send privately through a single chat.
         </p>
 
-        {/* Animated example */}
+        {/* Animated example ticker */}
         <div
           data-reveal
           data-delay="3"
@@ -321,10 +374,34 @@ export function LoginPage() {
           >
             {isLoading ? "Loading…" : "Start chatting →"}
           </button>
+          <a
+            href="#how-it-works"
+            className="px-8 py-4 bg-transparent text-zinc-400 font-medium text-base rounded-xl border border-zinc-800 hover:border-zinc-600 hover:text-white transition-colors"
+          >
+            See how it works
+          </a>
+        </div>
+
+        {/* Tech strip */}
+        <div
+          data-reveal
+          data-delay="4"
+          className="relative z-10 mt-14 flex items-center gap-2 font-mono text-[11px] text-white-800 flex-wrap justify-center"
+        >
+          {["Starknet", "Starkzap", "AVNU", "Privy", "Tongo", "Vesu"].map(
+            (t, i, arr) => (
+              <React.Fragment key={t}>
+                <span>{t}</span>
+                {i < arr.length - 1 && (
+                  <span className="text-white-900">·</span>
+                )}
+              </React.Fragment>
+            ),
+          )}
         </div>
       </section>
 
-      {/* ── Email wow section ─────────────────────────────────────────────── */}
+      {/* ── Email section ────────────────────────────────────────────────── */}
       <section className="border-t border-surface-border bg-surface-card">
         <div className="max-w-5xl mx-auto px-6 py-20">
           <div
@@ -356,7 +433,7 @@ export function LoginPage() {
               </p>
             </div>
 
-            {/* Right: flow diagram */}
+            {/* Right: flow steps */}
             <div className="lg:w-1/2 w-full space-y-3">
               {[
                 {
@@ -375,7 +452,7 @@ export function LoginPage() {
                   step: "03",
                   icon: "⚡",
                   label: "Tony signs in",
-                  desc: "Google login, wallet created in seconds. Zero setup.",
+                  desc: "Google login, wallet created in seconds. Zero setup. Gasless",
                 },
                 {
                   step: "04",
@@ -388,7 +465,7 @@ export function LoginPage() {
                   key={s.step}
                   data-reveal
                   data-delay={String(i + 1) as any}
-                  className="flex items-center gap-4 px-5 py-4 bg-surface border border-surface-border rounded-xl"
+                  className="flex items-center gap-4 px-5 py-4 bg-surface border border-surface-border rounded-xl hover:border-accent/20 transition-colors"
                 >
                   <span className="text-xs font-mono text-zinc-700 shrink-0 w-8">
                     {s.step}
@@ -411,15 +488,115 @@ export function LoginPage() {
         </div>
       </section>
 
-      {/* ── Features grid ─────────────────────────────────────────────────── */}
+      {/* ── Private transfers section ─────────────────────────────────────── */}
       <section className="border-t border-surface-border">
         <div className="max-w-5xl mx-auto px-6 py-20">
+          <div className="flex flex-col lg:flex-row gap-12 lg:gap-20 items-center">
+            {/* Left: flow steps */}
+            <div className="lg:w-1/2 w-full space-y-3 order-2 lg:order-1">
+              {[
+                {
+                  step: "01",
+                  label: "Enable private mode",
+                  desc: "Toggle once — Tongo key auto-generated for you",
+                },
+                {
+                  step: "02",
+                  label: "Amount encrypted",
+                  desc: "ElGamal + ZK proof wraps your transfer on-chain",
+                },
+                {
+                  step: "03",
+                  label: "On-chain, invisible",
+                  desc: "Transaction recorded — amount & recipient hidden",
+                },
+                {
+                  step: "04",
+                  label: "Recipient decrypts",
+                  desc: "Only they can see the details and claim funds",
+                },
+              ].map((s, i) => (
+                <div
+                  key={s.step}
+                  data-reveal
+                  data-delay={String(i + 1) as any}
+                  className="flex items-center gap-4 px-5 py-4 bg-surface-card border border-surface-border rounded-xl hover:border-accent/20 transition-colors"
+                >
+                  <span className="text-xs font-mono text-zinc-700 shrink-0 w-8">
+                    {s.step}
+                  </span>
+                  <span className="text-lg shrink-0 w-8 text-center"></span>
+                  <div>
+                    <p className="text-sm font-semibold text-white">
+                      {s.label}
+                    </p>
+                    <p className="text-xs text-zinc-500 font-mono mt-0.5">
+                      {s.desc}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Right: copy */}
+            <div className="lg:w-1/2 order-1 lg:order-2" data-reveal>
+              <p className="text-xs font-mono text-accent uppercase tracking-widest mb-5">
+                Confidential transfers
+              </p>
+              <h2 className="text-4xl sm:text-5xl font-bold text-white leading-tight mb-6">
+                Your business
+                <br />
+                stays yours.
+              </h2>
+              <p className="text-zinc-400 leading-relaxed mb-4">
+                Standard blockchain transfers expose every amount and address
+                publicly. With Zap-X private mode, nothing leaks — not the
+                amount, not who you're paying.
+              </p>
+              <p className="text-zinc-400 leading-relaxed mb-6">
+                Works with wallet addresses and email recipients alike. Only you
+                and your recipient can decrypt the transfer details.
+              </p>
+
+              {/* Crypto badges */}
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: "ElGamal encryption", accent: true },
+                  { label: "ZK proofs", accent: true },
+                  { label: "Hidden amount", accent: false },
+                  { label: "Hidden recipient", accent: false },
+                  { label: "Tongo Protocol", accent: false },
+                ].map((b) => (
+                  <span
+                    key={b.label}
+                    className={`px-3 py-1 rounded-full text-xs font-mono border ${
+                      b.accent
+                        ? "bg-accent/10 text-accent border-accent/20"
+                        : "bg-surface-card text-zinc-500 border-surface-border"
+                    }`}
+                  >
+                    {b.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Features grid ─────────────────────────────────────────────────── */}
+      <section
+        id="features"
+        className="border-t border-surface-border bg-surface-card"
+      >
+        <div className="max-w-5xl mx-auto px-6 py-20">
           <div data-reveal className="mb-14 text-center">
-            <p className="text-xs font-mono text-zinc-600 uppercase tracking-widest">
+            <p className="text-lg font-mono text-white-600 uppercase tracking-widest mb-3">
               Everything in one chat
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
             {FEATURES.map((f, i) => (
               <div
                 key={f.title}
@@ -428,14 +605,14 @@ export function LoginPage() {
                 className={`space-y-3 p-5 rounded-xl border transition-colors ${
                   f.highlight
                     ? "bg-accent/5 border-accent/20"
-                    : "bg-surface-card border-surface-border"
+                    : "bg-surface border-surface-border"
                 }`}
               >
                 <div
                   className={`w-10 h-10 rounded-xl flex items-center justify-center ${
                     f.highlight
                       ? "bg-accent/10 text-accent"
-                      : "bg-surface border border-surface-border text-zinc-500"
+                      : "bg-surface-card border border-surface-border text-zinc-500"
                   }`}
                 >
                   {f.icon}
@@ -451,11 +628,35 @@ export function LoginPage() {
               </div>
             ))}
           </div>
+
+          {/* Supported tokens */}
+          <div
+            data-reveal
+            className="mt-12 pt-10 border-t border-surface-border flex items-center gap-3 flex-wrap"
+          >
+            <span className="text-xs font-mono text-zinc-700 mr-1">
+              Supported
+            </span>
+            {TOKENS.map((t) => (
+              <div
+                key={t.symbol}
+                className="flex items-center gap-2 px-3 py-1.5 bg-surface border border-surface-border rounded-full"
+              >
+                <div
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: t.color }}
+                />
+                <span className="text-xs font-semibold text-zinc-400">
+                  {t.symbol}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* ── How it works ──────────────────────────────────────────────────── */}
-      <section className="border-t border-surface-border bg-surface-card">
+      <section id="how-it-works" className="border-t border-surface-border">
         <div className="max-w-5xl mx-auto px-6 py-20">
           <div data-reveal className="mb-14">
             <p className="text-xs font-mono text-zinc-600 uppercase tracking-widest mb-3">
@@ -473,7 +674,7 @@ export function LoginPage() {
               {
                 step: "02",
                 title: "Chat",
-                desc: "Tell the AI what you want. Send tokens, swap, earn yield — all from plain English. No forms, no clicking through menus.",
+                desc: "Tell the AI what you want. Send tokens, swap, stake, earn yield, or send privately — all from plain English.",
               },
               {
                 step: "03",
@@ -514,8 +715,8 @@ export function LoginPage() {
           <h2 className="text-5xl sm:text-6xl font-bold text-white mb-5">
             Ready to zap?
           </h2>
-          <p className="text-zinc-500 text-sm mb-10 font-mono">
-            Starknet · Starkzap · AVNU · Vesu · Privy · Ekubo
+          <p className="text-white-600 text-sm mb-10 font-mono">
+            Starknet · Starkzap · AVNU · Vesu · Privy · Tongo
           </p>
           <button
             onClick={login}
