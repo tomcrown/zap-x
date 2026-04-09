@@ -694,22 +694,27 @@ export async function executeDcaCreate(params: DcaCreateParams): Promise<{ txHas
   const totalBase = amountPerCycle.toBase() * BigInt(cycles);
   const totalAmount = Amount.fromRaw(totalBase, sellTokenObj as any);
 
+  const dcaRequest = {
+    sellToken: sellTokenObj as any,
+    buyToken: buyTokenObj as any,
+    sellAmount: totalAmount,
+    sellAmountPerCycle: amountPerCycle,
+    frequency: params.frequency,
+  };
+
+  // prepareCreate gives us the orderAddress before execution
+  const prepared = await wallet.dca().prepareCreate(dcaRequest);
+  const orderAddress: string | undefined = prepared.orderAddress
+    ? String(prepared.orderAddress)
+    : undefined;
+
   const result = await withFeeFallback(
-    (opts) => wallet.dca().create(
-      {
-        sellToken: sellTokenObj as any,
-        buyToken: buyTokenObj as any,
-        sellAmount: totalAmount,
-        sellAmountPerCycle: amountPerCycle,
-        frequency: params.frequency,
-      },
-      opts as any,
-    ),
+    (opts) => wallet.dca().create(dcaRequest, opts as any),
     true,
   );
 
   const txHash: string = (result as any).transaction_hash ?? (result as any).hash;
-  return { txHash };
+  return { txHash, orderAddress };
 }
 
 /** List active DCA orders from AVNU for the current wallet. */

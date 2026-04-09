@@ -213,10 +213,11 @@ function DcaRow({ order }: { order: any }) {
 
   const cancelMutation = useMutation({
     mutationFn: async () => {
-      if (order.order_address) {
-        await executeDcaCancel(order.order_address);
-        await dcaApi.cancel(order.order_address, order.tx_hash);
+      if (!order.order_address) {
+        throw new Error('Order address not available — this order was created before on-chain cancellation was supported. Contact support to cancel.');
       }
+      await executeDcaCancel(order.order_address);
+      await dcaApi.cancel(order.order_address, order.tx_hash);
     },
     onSuccess: () => {
       toast({
