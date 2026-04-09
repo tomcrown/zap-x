@@ -214,7 +214,9 @@ function DcaRow({ order }: { order: any }) {
   const cancelMutation = useMutation({
     mutationFn: async () => {
       if (!order.order_address) {
-        throw new Error('Order address not available — this order was created before on-chain cancellation was supported. Contact support to cancel.');
+        throw new Error(
+          "Order address not available — this order was created before on-chain cancellation was supported. Contact support to cancel.",
+        );
       }
       await executeDcaCancel(order.order_address);
       await dcaApi.cancel(order.order_address, order.tx_hash);
@@ -332,18 +334,26 @@ export function SidePanel({ isOpen, onClose }: Props) {
 
   // Backfill orderAddress for any DB records that are missing it
   useEffect(() => {
-    const missing = (dcaOrders ?? []).filter((o: any) => !o.order_address && o.status === 'active');
+    const missing = (dcaOrders ?? []).filter(
+      (o: any) => !o.order_address && o.status === "active",
+    );
     if (!missing.length) return;
-    getDcaOrders().then((onChainOrders) => {
-      missing.forEach((dbOrder: any) => {
-        const match = onChainOrders.find((o: any) =>
-          String(o.creationTransactionHash).toLowerCase() === dbOrder.tx_hash.toLowerCase()
-        );
-        if (match?.orderAddress) {
-          dcaApi.patchAddress(dbOrder.tx_hash, String(match.orderAddress)).catch(() => {});
-        }
-      });
-    }).catch(() => {});
+    getDcaOrders()
+      .then((onChainOrders) => {
+        missing.forEach((dbOrder: any) => {
+          const match = onChainOrders.find(
+            (o: any) =>
+              String(o.creationTransactionHash).toLowerCase() ===
+              dbOrder.tx_hash.toLowerCase(),
+          );
+          if (match?.orderAddress) {
+            dcaApi
+              .patchAddress(dbOrder.tx_hash, String(match.orderAddress))
+              .catch(() => {});
+          }
+        });
+      })
+      .catch(() => {});
   }, [dcaOrders]);
 
   const displayTokens: TokenSymbol[] = ["STRK", "ETH", "USDC", "wBTC"];
@@ -601,7 +611,7 @@ export function SidePanel({ isOpen, onClose }: Props) {
           {/* Footer */}
           <div className="px-4 py-3 border-t border-surface-border shrink-0">
             <p className="text-xs font-mono text-zinc-800 text-center">
-              Starknet · Sepolia
+              Starknet · Mainnet
             </p>
           </div>
         </div>

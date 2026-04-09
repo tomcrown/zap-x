@@ -406,19 +406,14 @@ const HELP_COMMANDS = [
     glyph: "→",
     commands: [
       {
+        label: "Send to email",
+        example: "send 1 USDC/STRK to friend@gmail.com",
+        fill: "Send 1 USDC to ",
+      },
+      {
         label: "Send to wallet",
         example: "send 5 STRK to 0x04a…",
         fill: "Send 5 STRK to ",
-      },
-      {
-        label: "Send to email",
-        example: "send 10 USDC to friend@gmail.com",
-        fill: "Send 10 USDC to ",
-      },
-      {
-        label: "Send to user",
-        example: "send 2 ETH to @alice",
-        fill: "Send 2 ETH to @",
       },
     ],
   },
@@ -432,8 +427,8 @@ const HELP_COMMANDS = [
     commands: [
       {
         label: "Swap tokens",
-        example: "swap 1 ETH to USDC",
-        fill: "Swap 1 ETH to USDC",
+        example: "swap 1 STRK to USDC",
+        fill: "Swap 1 STRK to USDC",
       },
       {
         label: "DCA weekly",
@@ -1097,8 +1092,8 @@ export function AIExecutor() {
           action.type,
         );
         errMsg = isLending
-          ? "Vesu lending on Sepolia may not support this token, or the paymaster couldn't cover gas. Try with STRK."
-          : "Make sure you have STRK for gas, or the paymaster may not support this token pair on Sepolia.";
+          ? "Vesu lending on Mainnet may not support this token, or the paymaster couldn't cover gas. Try with STRK."
+          : "Make sure you have STRK for gas, or the paymaster may not support this token pair on Mainnet.";
       } else if (
         errMsg.includes("insufficient") ||
         errMsg.includes("balance")

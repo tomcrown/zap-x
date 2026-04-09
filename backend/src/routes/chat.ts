@@ -33,7 +33,9 @@ export interface ActivityItem {
   created_at: string;
 }
 
-async function getUnifiedActivity(walletAddress: string): Promise<ActivityItem[]> {
+async function getUnifiedActivity(
+  walletAddress: string,
+): Promise<ActivityItem[]> {
   const sql = getDb();
 
   const [sends, receives, swaps, dcaRows, saves, bridges] = await Promise.all([
@@ -78,7 +80,10 @@ async function getUnifiedActivity(walletAddress: string): Promise<ActivityItem[]
   ]);
 
   return [...sends, ...receives, ...swaps, ...dcaRows, ...saves, ...bridges]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )
     .slice(0, 15);
 }
 
@@ -171,35 +176,64 @@ async function enrichAction(
 
   if (action.type === "swap") {
     if (!action.toToken)
-      return { action, ready: false, warning: "No target token specified for swap." };
+      return {
+        action,
+        ready: false,
+        warning: "No target token specified for swap.",
+      };
     if (action.token === action.toToken)
-      return { action, ready: false, warning: "Cannot swap a token for itself." };
+      return {
+        action,
+        ready: false,
+        warning: "Cannot swap a token for itself.",
+      };
   }
 
   if (action.type === "bridge") {
     if (!action.fromChain)
-      return { action, ready: false, warning: 'Specify the source chain, e.g. "from Ethereum".' };
+      return {
+        action,
+        ready: false,
+        warning: 'Specify the source chain, e.g. "from Ethereum".',
+      };
     return {
       action,
       ready: true,
-      warning: "MetaMask required. Clicking confirm will open MetaMask and switch it to Ethereum Sepolia.",
+      warning:
+        "MetaMask required. Clicking confirm will open MetaMask and switch it to Ethereum Mainnet.",
     };
   }
 
   if (action.type === "dca") {
     if (!action.toToken)
-      return { action, ready: false, warning: 'Specify the token to buy, e.g. "buy 10 USDC every week".' };
+      return {
+        action,
+        ready: false,
+        warning: 'Specify the token to buy, e.g. "buy 10 USDC every week".',
+      };
     if (!action.frequency)
-      return { action, ready: false, warning: "Specify a frequency: daily, weekly, or monthly." };
+      return {
+        action,
+        ready: false,
+        warning: "Specify a frequency: daily, weekly, or monthly.",
+      };
     if (action.token === action.toToken)
-      return { action, ready: false, warning: "Cannot DCA a token for itself." };
+      return {
+        action,
+        ready: false,
+        warning: "Cannot DCA a token for itself.",
+      };
     return { action, ready: true };
   }
 
   if (action.type === "borrow") {
     if (!action.collateralToken)
       return { action: { ...action, collateralToken: "STRK" }, ready: true };
-    return { action, ready: true, warning: "Note: Vesu borrow on Sepolia may have oracle limitations." };
+    return {
+      action,
+      ready: true,
+      warning: "Note: Vesu borrow on Mainnet may have oracle limitations.",
+    };
   }
 
   if (action.type === "repay") {
@@ -226,7 +260,8 @@ router.post(
       if (BALANCE_RE.test(lower)) {
         res.json({
           success: true,
-          message: "Your live balances are shown at the top of the screen. Tap the STRK amount to see all tokens.",
+          message:
+            "Your live balances are shown at the top of the screen. Tap the STRK amount to see all tokens.",
           actions: [],
         });
         return;
@@ -235,7 +270,12 @@ router.post(
       if (HISTORY_RE.test(lower)) {
         const items = await getUnifiedActivity(walletAddress);
         if (items.length === 0) {
-          res.json({ success: true, message: "No activity yet. Try sending some STRK!", actions: [], data: { type: "history", items: [] } });
+          res.json({
+            success: true,
+            message: "No activity yet. Try sending some STRK!",
+            actions: [],
+            data: { type: "history", items: [] },
+          });
           return;
         }
         res.json({
@@ -247,19 +287,26 @@ router.post(
         return;
       }
 
-      if (POSITION_RE.test(lower) && !lower.match(/\b(lend|save|invest|supply|deposit|withdraw|unstake|pull)\b.*[\d]/)) {
+      if (
+        POSITION_RE.test(lower) &&
+        !lower.match(
+          /\b(lend|save|invest|supply|deposit|withdraw|unstake|pull)\b.*[\d]/,
+        )
+      ) {
         const positions = await getActiveLendingPositions(walletAddress);
         const stats = await getLendingStats(walletAddress);
         if (positions.length === 0) {
           res.json({
             success: true,
-            message: 'You have no active lending positions. Try "save 10 USDC" to start earning yield on Vesu.',
+            message:
+              'You have no active lending positions. Try "save 10 USDC" to start earning yield on Vesu.',
             actions: [],
           });
           return;
         }
         const lines = positions.map(
-          (p) => `${p.token}  ${parseFloat(p.supplied_amount).toFixed(4)} supplied`,
+          (p) =>
+            `${p.token}  ${parseFloat(p.supplied_amount).toFixed(4)} supplied`,
         );
         res.json({
           success: true,
@@ -272,14 +319,20 @@ router.post(
       if (GREETING_RE.test(lower)) {
         res.json({
           success: false,
-          message: "Hey! What would you like to do?\n\n• Send tokens to any email or wallet\n• Swap between STRK, ETH, USDC\n• Save tokens and earn yield\n• Check your positions\n\nJust tell me in plain English.",
+          message:
+            "Hey! What would you like to do?\n\n• Send tokens to any email or wallet\n• Swap between STRK, ETH, USDC\n• Save tokens and earn yield\n• Check your positions\n\nJust tell me in plain English.",
           actions: [],
         });
         return;
       }
 
       if (HELP_RE.test(lower)) {
-        res.json({ success: false, message: "Here's everything I can do — tap any command to try it:", actions: [], data: { type: "help" } });
+        res.json({
+          success: false,
+          message: "Here's everything I can do — tap any command to try it:",
+          actions: [],
+          data: { type: "help" },
+        });
         return;
       }
 
@@ -288,7 +341,9 @@ router.post(
       if (parsed.actions.length === 0) {
         res.json({
           success: false,
-          message: parsed.clarification ?? 'I didn\'t understand that. Try: "send 5 STRK to alice@gmail.com", "swap 1 ETH to USDC", or "save 10 USDC".',
+          message:
+            parsed.clarification ??
+            'I didn\'t understand that. Try: "send 5 STRK to alice@gmail.com", "swap 1 ETH to USDC", or "save 10 USDC".',
           actions: [],
         });
         return;
@@ -304,26 +359,35 @@ router.post(
 
       const actionSummaries = enriched.map((e) => {
         const a = e.action;
-        if (a.type === "send") return `send ${a.amount} ${a.token} to ${a.recipient}`;
-        if (a.type === "swap") return `swap ${a.amount} ${a.token} → ${a.toToken}`;
-        if (a.type === "save" || a.type === "invest" || a.type === "stake") return `save ${a.amount} ${a.token} on Vesu`;
-        if (a.type === "unstake") return `withdraw ${a.amount} ${a.token} from Vesu`;
-        if (a.type === "bridge") return `bridge ${a.amount} ${a.token} from ${a.fromChain} → Starknet`;
-        if (a.type === "dca") return `DCA ${a.amount} ${a.token} → ${a.toToken} ${a.frequency === "P1D" ? "daily" : a.frequency === "P1M" ? "monthly" : "weekly"}`;
-        if (a.type === "borrow") return `borrow ${a.amount} ${a.token} against ${a.collateralToken}`;
+        if (a.type === "send")
+          return `send ${a.amount} ${a.token} to ${a.recipient}`;
+        if (a.type === "swap")
+          return `swap ${a.amount} ${a.token} → ${a.toToken}`;
+        if (a.type === "save" || a.type === "invest" || a.type === "stake")
+          return `save ${a.amount} ${a.token} on Vesu`;
+        if (a.type === "unstake")
+          return `withdraw ${a.amount} ${a.token} from Vesu`;
+        if (a.type === "bridge")
+          return `bridge ${a.amount} ${a.token} from ${a.fromChain} → Starknet`;
+        if (a.type === "dca")
+          return `DCA ${a.amount} ${a.token} → ${a.toToken} ${a.frequency === "P1D" ? "daily" : a.frequency === "P1M" ? "monthly" : "weekly"}`;
+        if (a.type === "borrow")
+          return `borrow ${a.amount} ${a.token} against ${a.collateralToken}`;
         if (a.type === "repay") return `repay ${a.amount} ${a.token}`;
         return `${a.type} ${a.amount} ${a.token}`;
       });
 
       let responseMessage: string;
       if (allReady) {
-        responseMessage = enriched.length === 1
-          ? `Got it. Confirm to ${actionSummaries[0]}.`
-          : `${enriched.length} actions ready. Review and confirm each one.`;
+        responseMessage =
+          enriched.length === 1
+            ? `Got it. Confirm to ${actionSummaries[0]}.`
+            : `${enriched.length} actions ready. Review and confirm each one.`;
       } else {
-        responseMessage = readyCount > 0
-          ? `${readyCount} of ${enriched.length} actions are ready.`
-          : `Couldn't prepare that — see details below.`;
+        responseMessage =
+          readyCount > 0
+            ? `${readyCount} of ${enriched.length} actions are ready.`
+            : `Couldn't prepare that — see details below.`;
       }
 
       res.json({

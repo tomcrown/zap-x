@@ -8,22 +8,33 @@
  * SDK Docs: https://docs.starknet.io/build/starkzap/
  */
 
-import { StarkZap, Amount, ChainId, getPresets, ExternalChain, ConnectedEthereumWallet, EthereumNetwork } from "starkzap";
+import {
+  StarkZap,
+  Amount,
+  ChainId,
+  getPresets,
+  ExternalChain,
+  ConnectedEthereumWallet,
+  EthereumNetwork,
+} from "starkzap";
 import { CallData, uint256, RpcProvider } from "starknet";
 import type { TokenSymbol } from "../types/index.js";
 
 // Vesu pool factory & default pool — network-aware (from starkzap vesuPresets)
-const VESU_POOL_FACTORY = (import.meta.env.VITE_STARKNET_NETWORK ?? "sepolia") === "mainnet"
-  ? "0x3760f903a37948f97302736f89ce30290e45f441559325026842b7a6fb388c0"
-  : "0x03ac869e64b1164aaee7f3fd251f86581eab8bfbbd2abdf1e49c773282d4a092";
-const VESU_DEFAULT_POOL = (import.meta.env.VITE_STARKNET_NETWORK ?? "sepolia") === "mainnet"
-  ? "0x0451fe483d5921a2919ddd81d0de6696669bccdacd859f72a4fba7656b97c3b5"
-  : "0x06227c13372b8c7b7f38ad1cfe05b5cf515b4e5c596dd05fe8437ab9747b2093";
+const VESU_POOL_FACTORY =
+  (import.meta.env.VITE_STARKNET_NETWORK ?? "sepolia") === "mainnet"
+    ? "0x3760f903a37948f97302736f89ce30290e45f441559325026842b7a6fb388c0"
+    : "0x03ac869e64b1164aaee7f3fd251f86581eab8bfbbd2abdf1e49c773282d4a092";
+const VESU_DEFAULT_POOL =
+  (import.meta.env.VITE_STARKNET_NETWORK ?? "sepolia") === "mainnet"
+    ? "0x0451fe483d5921a2919ddd81d0de6696669bccdacd859f72a4fba7656b97c3b5"
+    : "0x06227c13372b8c7b7f38ad1cfe05b5cf515b4e5c596dd05fe8437ab9747b2093";
 
 // Token presets keyed by network — resolved once at module load
-const _chainId = (import.meta.env.VITE_STARKNET_NETWORK ?? "sepolia") === "mainnet"
-  ? ChainId.MAINNET
-  : ChainId.SEPOLIA;
+const _chainId =
+  (import.meta.env.VITE_STARKNET_NETWORK ?? "sepolia") === "mainnet"
+    ? ChainId.MAINNET
+    : ChainId.SEPOLIA;
 const _tokens = getPresets(_chainId) as Record<string, unknown>;
 
 // ─── Token Address Map (used for token object lookup in SDK) ─────────────────
@@ -219,15 +230,19 @@ export async function getSwapQuote(
     slippageBps,
   });
 
-  const outAmount = Amount.fromRaw((quote as any).amountOutBase, tokenOutObj as any);
+  const outAmount = Amount.fromRaw(
+    (quote as any).amountOutBase,
+    tokenOutObj as any,
+  );
 
   return {
     amountIn,
     amountOut: outAmount.toUnit(),
-    priceImpact: (quote as any).priceImpactBps != null
-      ? ((Number((quote as any).priceImpactBps) / 100).toFixed(2) + '%')
-      : '< 0.01%',
-    provider: (quote as any).provider ?? 'avnu',
+    priceImpact:
+      (quote as any).priceImpactBps != null
+        ? (Number((quote as any).priceImpactBps) / 100).toFixed(2) + "%"
+        : "< 0.01%",
+    provider: (quote as any).provider ?? "avnu",
   };
 }
 
@@ -242,7 +257,10 @@ export async function executeSwap(
   const tokenOutObj = getToken(tokenOut);
   const wallet = getConnectedWallet();
 
-  await wallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" as any });
+  await wallet.ensureReady({
+    deploy: "if_needed",
+    feeMode: "sponsored" as any,
+  });
 
   const parsedAmount = Amount.parse(amountIn, tokenInObj as any);
   const result = await wallet.swap(
@@ -305,12 +323,19 @@ export async function executeLendingDeposit(
 ): Promise<string> {
   const tokenObj = getToken(token);
   const wallet = getConnectedWallet();
-  await wallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" as any });
+  await wallet.ensureReady({
+    deploy: "if_needed",
+    feeMode: "sponsored" as any,
+  });
 
   const parsedAmount = Amount.parse(amount, tokenObj as any);
   const lending = wallet.lending();
   const result = await withFeeFallback(
-    (opts) => lending.deposit({ token: tokenObj as any, amount: parsedAmount }, opts as any),
+    (opts) =>
+      lending.deposit(
+        { token: tokenObj as any, amount: parsedAmount },
+        opts as any,
+      ),
     !!gasless,
   );
   return (result as any).hash ?? (result as any).transaction_hash;
@@ -384,7 +409,10 @@ export async function executeLendingWithdraw(
 ): Promise<string> {
   const tokenObj = getToken(token);
   const wallet = getConnectedWallet();
-  await wallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" as any });
+  await wallet.ensureReady({
+    deploy: "if_needed",
+    feeMode: "sponsored" as any,
+  });
 
   const lending = wallet.lending();
   try {
@@ -415,19 +443,21 @@ export async function getLendingMarkets(): Promise<LendingMarket[]> {
     const markets = await (lending as any).getMarkets();
     if (!markets || !Array.isArray(markets)) return [];
     return markets.map((m: any) => ({
-      name: m.name ?? m.token?.symbol ?? 'Unknown',
-      tokenSymbol: m.token?.symbol ?? m.tokenSymbol ?? '',
-      supplyApy: m.supplyApy ?? m.supply_apy ?? '0',
-      borrowApy: m.borrowApy ?? m.borrow_apy ?? '0',
-      totalSupplied: m.totalSupplied?.toUnit?.() ?? m.totalSupplied ?? '0',
-      totalBorrowed: m.totalBorrowed?.toUnit?.() ?? m.totalBorrowed ?? '0',
+      name: m.name ?? m.token?.symbol ?? "Unknown",
+      tokenSymbol: m.token?.symbol ?? m.tokenSymbol ?? "",
+      supplyApy: m.supplyApy ?? m.supply_apy ?? "0",
+      borrowApy: m.borrowApy ?? m.borrow_apy ?? "0",
+      totalSupplied: m.totalSupplied?.toUnit?.() ?? m.totalSupplied ?? "0",
+      totalBorrowed: m.totalBorrowed?.toUnit?.() ?? m.totalBorrowed ?? "0",
     }));
   } catch {
     return [];
   }
 }
 
-export async function getLendingPosition(token: TokenSymbol): Promise<LendingPosition | null> {
+export async function getLendingPosition(
+  token: TokenSymbol,
+): Promise<LendingPosition | null> {
   if (!_wallet) return null;
   const tokenObj = getToken(token);
   const wallet = getConnectedWallet();
@@ -437,8 +467,8 @@ export async function getLendingPosition(token: TokenSymbol): Promise<LendingPos
     if (!pos) return null;
     return {
       tokenSymbol: token,
-      supplied: pos.supplied?.toUnit?.() ?? '0',
-      borrowed: pos.borrowed?.toUnit?.() ?? '0',
+      supplied: pos.supplied?.toUnit?.() ?? "0",
+      borrowed: pos.borrowed?.toUnit?.() ?? "0",
       healthFactor: pos.health != null ? String(pos.health) : null,
     };
   } catch {
@@ -468,7 +498,10 @@ export async function executeStake(
   const tokenObj = getToken(token);
   const wallet = getConnectedWallet();
 
-  await wallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" as any });
+  await wallet.ensureReady({
+    deploy: "if_needed",
+    feeMode: "sponsored" as any,
+  });
 
   const parsedAmount = Amount.parse(amount, tokenObj as any);
 
@@ -595,11 +628,17 @@ export async function getBridgeTokens(): Promise<BridgeTokenInfo[]> {
  */
 export async function connectEthereumWallet(): Promise<any> {
   const provider = (window as any).ethereum;
-  if (!provider) throw new Error("MetaMask not found. Install MetaMask to bridge from Ethereum.");
+  if (!provider)
+    throw new Error(
+      "MetaMask not found. Install MetaMask to bridge from Ethereum.",
+    );
 
   // Request account access — opens MetaMask if not already connected
-  const accounts: string[] = await provider.request({ method: "eth_requestAccounts" });
-  if (!accounts.length) throw new Error("No Ethereum account found in MetaMask.");
+  const accounts: string[] = await provider.request({
+    method: "eth_requestAccounts",
+  });
+  if (!accounts.length)
+    throw new Error("No Ethereum account found in MetaMask.");
 
   // Determine which Ethereum network we need based on Starknet network
   const isSepolia = _chainId !== ChainId.MAINNET;
@@ -607,7 +646,9 @@ export async function connectEthereumWallet(): Promise<any> {
   const requiredChainHex = "0x" + requiredChainId.toString(16);
 
   // Check current chain
-  const currentChainHex: string = await provider.request({ method: "eth_chainId" });
+  const currentChainHex: string = await provider.request({
+    method: "eth_chainId",
+  });
   const currentChainId = Number(BigInt(currentChainHex));
 
   if (currentChainId !== requiredChainId) {
@@ -622,26 +663,37 @@ export async function connectEthereumWallet(): Promise<any> {
       if (switchErr.code === 4902 && isSepolia) {
         await provider.request({
           method: "wallet_addEthereumChain",
-          params: [{
-            chainId: requiredChainHex,
-            chainName: "Ethereum Sepolia",
-            nativeCurrency: { name: "SepoliaETH", symbol: "ETH", decimals: 18 },
-            rpcUrls: ["https://rpc.sepolia.org"],
-            blockExplorerUrls: ["https://sepolia.etherscan.io"],
-          }],
+          params: [
+            {
+              chainId: requiredChainHex,
+              chainName: "Ethereum Sepolia",
+              nativeCurrency: {
+                name: "SepoliaETH",
+                symbol: "ETH",
+                decimals: 18,
+              },
+              rpcUrls: ["https://rpc.sepolia.org"],
+              blockExplorerUrls: ["https://sepolia.etherscan.io"],
+            },
+          ],
         });
       } else {
         throw new Error(
           isSepolia
-            ? "Please switch MetaMask to Ethereum Sepolia testnet to bridge."
-            : "Please switch MetaMask to Ethereum Mainnet to bridge."
+            ? "Please switch MetaMask to Ethereum Mainnet to bridge."
+            : "Please switch MetaMask to Ethereum Mainnet to bridge.",
         );
       }
     }
   }
 
   return ConnectedEthereumWallet.from(
-    { chain: ExternalChain.ETHEREUM, provider, address: accounts[0], chainId: requiredChainId },
+    {
+      chain: ExternalChain.ETHEREUM,
+      provider,
+      address: accounts[0],
+      chainId: requiredChainId,
+    },
     _chainId,
   );
 }
@@ -676,23 +728,31 @@ export async function executeBridge(
 export interface DcaCreateParams {
   sellToken: TokenSymbol;
   buyToken: TokenSymbol;
-  amountPerCycle: string;   // human-readable e.g. "10"
-  frequency: string;        // ISO 8601: "P1D", "P7D", "P1M"
-  cycles?: number;          // total cycles (optional)
+  amountPerCycle: string; // human-readable e.g. "10"
+  frequency: string; // ISO 8601: "P1D", "P7D", "P1M"
+  cycles?: number; // total cycles (optional)
 }
 
 /**
  * Create a DCA order on AVNU. Sells `sellToken` to buy `buyToken` on schedule.
  * Returns { txHash, orderAddress? }
  */
-export async function executeDcaCreate(params: DcaCreateParams): Promise<{ txHash: string; orderAddress?: string }> {
+export async function executeDcaCreate(
+  params: DcaCreateParams,
+): Promise<{ txHash: string; orderAddress?: string }> {
   const wallet = getConnectedWallet();
-  await wallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" as any });
+  await wallet.ensureReady({
+    deploy: "if_needed",
+    feeMode: "sponsored" as any,
+  });
 
   const sellTokenObj = getToken(params.sellToken);
-  const buyTokenObj  = getToken(params.buyToken);
+  const buyTokenObj = getToken(params.buyToken);
 
-  const amountPerCycle = Amount.parse(params.amountPerCycle, sellTokenObj as any);
+  const amountPerCycle = Amount.parse(
+    params.amountPerCycle,
+    sellTokenObj as any,
+  );
   // totalAmount = amountPerCycle * cycles (or 100 cycles if unspecified)
   const cycles = params.cycles ?? 100;
   const totalBase = amountPerCycle.toBase() * BigInt(cycles);
@@ -711,7 +771,8 @@ export async function executeDcaCreate(params: DcaCreateParams): Promise<{ txHas
     true,
   );
 
-  const txHash: string = (result as any).transaction_hash ?? (result as any).hash;
+  const txHash: string =
+    (result as any).transaction_hash ?? (result as any).hash;
 
   // Poll getOrders after tx submission to get the on-chain orderAddress.
   // AVNU assigns it after the tx is accepted — retry up to 10s.
@@ -723,13 +784,16 @@ export async function executeDcaCreate(params: DcaCreateParams): Promise<{ txHas
       const match = orders.find(
         (o: any) =>
           o.creationTransactionHash === txHash ||
-          String(o.creationTransactionHash).toLowerCase() === txHash.toLowerCase()
+          String(o.creationTransactionHash).toLowerCase() ===
+            txHash.toLowerCase(),
       );
       if (match?.orderAddress) {
         orderAddress = String(match.orderAddress);
         break;
       }
-    } catch { /* keep retrying */ }
+    } catch {
+      /* keep retrying */
+    }
   }
 
   return { txHash, orderAddress };
@@ -769,7 +833,7 @@ export async function getBorrowLimit(
 ): Promise<string> {
   if (!_wallet) return "0";
   const wallet = getConnectedWallet();
-  const colObj  = getToken(collateralToken);
+  const colObj = getToken(collateralToken);
   const debtObj = getToken(debtToken);
   try {
     const maxBase = await wallet.lending().getMaxBorrowAmount({
@@ -788,17 +852,25 @@ export async function executeBorrow(
   amount: string,
   gasless?: boolean,
 ): Promise<string> {
-  const wallet   = getConnectedWallet();
-  const colObj   = getToken(collateralToken);
-  const debtObj  = getToken(debtToken);
-  await wallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" as any });
+  const wallet = getConnectedWallet();
+  const colObj = getToken(collateralToken);
+  const debtObj = getToken(debtToken);
+  await wallet.ensureReady({
+    deploy: "if_needed",
+    feeMode: "sponsored" as any,
+  });
 
   const parsedAmount = Amount.parse(amount, debtObj as any);
   const result = await withFeeFallback(
-    (opts) => wallet.lending().borrow(
-      { collateralToken: colObj as any, debtToken: debtObj as any, amount: parsedAmount },
-      opts as any,
-    ),
+    (opts) =>
+      wallet.lending().borrow(
+        {
+          collateralToken: colObj as any,
+          debtToken: debtObj as any,
+          amount: parsedAmount,
+        },
+        opts as any,
+      ),
     !!gasless,
   );
   return (result as any).hash ?? (result as any).transaction_hash;
@@ -810,17 +882,25 @@ export async function executeRepay(
   amount: string,
   gasless?: boolean,
 ): Promise<string> {
-  const wallet  = getConnectedWallet();
-  const colObj  = getToken(collateralToken);
+  const wallet = getConnectedWallet();
+  const colObj = getToken(collateralToken);
   const debtObj = getToken(debtToken);
-  await wallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" as any });
+  await wallet.ensureReady({
+    deploy: "if_needed",
+    feeMode: "sponsored" as any,
+  });
 
   const parsedAmount = Amount.parse(amount, debtObj as any);
   const result = await withFeeFallback(
-    (opts) => wallet.lending().repay(
-      { collateralToken: colObj as any, debtToken: debtObj as any, amount: parsedAmount },
-      opts as any,
-    ),
+    (opts) =>
+      wallet.lending().repay(
+        {
+          collateralToken: colObj as any,
+          debtToken: debtObj as any,
+          amount: parsedAmount,
+        },
+        opts as any,
+      ),
     !!gasless,
   );
   return (result as any).hash ?? (result as any).transaction_hash;

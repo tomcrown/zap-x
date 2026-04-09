@@ -263,7 +263,7 @@ export function LoginPage() {
           className="relative z-10 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-accent/25 bg-accent/5 text-accent text-xs font-mono mb-2"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-slow" />
-          Live on Starknet Sepolia
+          Live on Starknet Mainnet
         </div>
 
         {/* Headline */}
