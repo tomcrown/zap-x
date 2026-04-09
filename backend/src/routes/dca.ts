@@ -58,4 +58,20 @@ router.post('/cancel', requireAuth as any, validate(cancelSchema), async (req: A
   } catch (err) { next(err); }
 });
 
+// POST /api/dca/patch-address — backfill orderAddress for orders created without it
+router.post('/patch-address', requireAuth as any, async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const { txHash, orderAddress } = req.body;
+    if (!txHash || !orderAddress) {
+      res.status(400).json({ error: 'txHash and orderAddress are required.' });
+      return;
+    }
+    await getDb()`
+      UPDATE dca_records SET order_address = ${orderAddress}
+      WHERE tx_hash = ${txHash} AND user_wallet = ${req.user!.walletAddress} AND order_address IS NULL
+    `;
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 export default router;

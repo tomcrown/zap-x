@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   transferApi,
@@ -9,7 +9,7 @@ import {
 } from "../../lib/api.js";
 import { useWallet } from "../../contexts/WalletContext.js";
 import { TokenSymbol, ClaimLink } from "../../types/index.js";
-import { executeDcaCancel } from "../../lib/starkzap.js";
+import { executeDcaCancel, getDcaOrders } from "../../lib/starkzap.js";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "../../contexts/ToastContext.js";
 
@@ -329,6 +329,22 @@ export function SidePanel({ isOpen, onClose }: Props) {
     enabled: !!walletAddress,
     refetchInterval: 60_000,
   });
+
+  // Backfill orderAddress for any DB records that are missing it
+  useEffect(() => {
+    const missing = (dcaOrders ?? []).filter((o: any) => !o.order_address && o.status === 'active');
+    if (!missing.length) return;
+    getDcaOrders().then((onChainOrders) => {
+      missing.forEach((dbOrder: any) => {
+        const match = onChainOrders.find((o: any) =>
+          String(o.creationTransactionHash).toLowerCase() === dbOrder.tx_hash.toLowerCase()
+        );
+        if (match?.orderAddress) {
+          dcaApi.patchAddress(dbOrder.tx_hash, String(match.orderAddress)).catch(() => {});
+        }
+      });
+    }).catch(() => {});
+  }, [dcaOrders]);
 
   const displayTokens: TokenSymbol[] = ["STRK", "ETH", "USDC", "wBTC"];
   const activePositions = (positions ?? [])

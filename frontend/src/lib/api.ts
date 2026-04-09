@@ -320,6 +320,9 @@ export const dcaApi = {
 
   cancel: (orderAddress: string, txHash: string) =>
     apiClient.post("/dca/cancel", { orderAddress, txHash }).then((r) => r.data),
+
+  patchAddress: (txHash: string, orderAddress: string) =>
+    apiClient.post("/dca/patch-address", { txHash, orderAddress }).then((r) => r.data),
 };
 
 // ─── Bridge ───────────────────────────────────────────────────────────────────

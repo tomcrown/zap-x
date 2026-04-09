@@ -702,18 +702,32 @@ export async function executeDcaCreate(params: DcaCreateParams): Promise<{ txHas
     frequency: params.frequency,
   };
 
-  // prepareCreate gives us the orderAddress before execution
-  const prepared = await wallet.dca().prepareCreate(dcaRequest);
-  const orderAddress: string | undefined = prepared.orderAddress
-    ? String(prepared.orderAddress)
-    : undefined;
-
   const result = await withFeeFallback(
     (opts) => wallet.dca().create(dcaRequest, opts as any),
     true,
   );
 
   const txHash: string = (result as any).transaction_hash ?? (result as any).hash;
+
+  // Poll getOrders after tx submission to get the on-chain orderAddress.
+  // AVNU assigns it after the tx is accepted — retry up to 10s.
+  let orderAddress: string | undefined;
+  for (let i = 0; i < 5; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const orders = await getDcaOrders();
+      const match = orders.find(
+        (o: any) =>
+          o.creationTransactionHash === txHash ||
+          String(o.creationTransactionHash).toLowerCase() === txHash.toLowerCase()
+      );
+      if (match?.orderAddress) {
+        orderAddress = String(match.orderAddress);
+        break;
+      }
+    } catch { /* keep retrying */ }
+  }
+
   return { txHash, orderAddress };
 }
 
