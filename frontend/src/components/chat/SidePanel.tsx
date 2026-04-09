@@ -597,7 +597,7 @@ export function SidePanel({ isOpen, onClose }: Props) {
 
           {/* Capabilities */}
           <div className="px-4 py-4 flex-1">
-            <span className="text-xs text-zinc-600 font-mono block mb-3">
+            <span className="text-xs text-white-600 font-mono block mb-3">
               What I can do
             </span>
             <div className="space-y-1.5">
