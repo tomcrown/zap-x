@@ -1,5 +1,6 @@
 import React from "react";
 import { useWallet } from "../../contexts/WalletContext.js";
+import { Link } from "react-router-dom";
 
 interface ChatHeaderProps {
   panelOpen: boolean;
@@ -77,6 +78,12 @@ export function ChatHeader({ panelOpen, onTogglePanel }: ChatHeaderProps) {
 
       {/* Right */}
       <div className="flex items-center gap-4">
+        <Link
+          to="/docs"
+          className="hidden sm:block text-xs font-mono text-zinc-600 hover:text-zinc-400 transition-colors"
+        >
+          docs
+        </Link>
         {profile?.username && (
           <span className="hidden md:block text-xs text-zinc-600 font-mono">
             @{profile.username}

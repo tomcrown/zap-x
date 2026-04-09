@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useWallet } from "../contexts/WalletContext.js";
 
 // ── Scroll reveal hook ────────────────────────────────────────────────────────
@@ -244,6 +244,12 @@ export function LoginPage() {
             Zap<span className="text-accent">-X</span>
           </span>
         </div>
+        <Link
+          to="/docs"
+          className="text-xs font-mono text-white-600 hover:text-zinc-400 transition-colors"
+        >
+          Docs
+        </Link>
         <button
           onClick={login}
           disabled={isLoading}

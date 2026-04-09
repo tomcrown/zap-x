@@ -9,6 +9,7 @@ import { LoginPage } from "./pages/LoginPage.js";
 import { ClaimPageContent } from "./components/claim/ClaimPage.js";
 import { AIExecutor } from "./components/send/AIExecutor.js";
 import { config } from "./config.js";
+import { DocsPage } from "./pages/DocsPage.js";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,19 +40,25 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <ToastProvider>
           <WalletProvider>
-            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <BrowserRouter
+              future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+            >
               <Routes>
                 {/* Public routes */}
                 <Route element={<PublicLayout />}>
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/claim/:token" element={<ClaimPageContent />} />
+                  <Route path="/docs" element={<DocsPage />} />
                 </Route>
 
                 {/* App shell — chat is the entire product */}
                 <Route element={<AuthLayout />}>
                   <Route path="/" element={<AIExecutor />} />
                   {/* Legacy route redirects */}
-                  <Route path="/dashboard" element={<Navigate to="/" replace />} />
+                  <Route
+                    path="/dashboard"
+                    element={<Navigate to="/" replace />}
+                  />
                   <Route path="/send" element={<Navigate to="/" replace />} />
                   <Route path="/lend" element={<Navigate to="/" replace />} />
                   <Route path="/swap" element={<Navigate to="/" replace />} />
