@@ -12,9 +12,13 @@ import { StarkZap, Amount, ChainId, getPresets, ExternalChain, ConnectedEthereum
 import { CallData, uint256, RpcProvider } from "starknet";
 import type { TokenSymbol } from "../types/index.js";
 
-// Vesu Sepolia constants (from starkzap vesuPresets)
-const VESU_SEPOLIA_POOL_FACTORY = "0x03ac869e64b1164aaee7f3fd251f86581eab8bfbbd2abdf1e49c773282d4a092";
-const VESU_SEPOLIA_DEFAULT_POOL  = "0x06227c13372b8c7b7f38ad1cfe05b5cf515b4e5c596dd05fe8437ab9747b2093";
+// Vesu pool factory & default pool — network-aware (from starkzap vesuPresets)
+const VESU_POOL_FACTORY = (import.meta.env.VITE_STARKNET_NETWORK ?? "sepolia") === "mainnet"
+  ? "0x3760f903a37948f97302736f89ce30290e45f441559325026842b7a6fb388c0"
+  : "0x03ac869e64b1164aaee7f3fd251f86581eab8bfbbd2abdf1e49c773282d4a092";
+const VESU_DEFAULT_POOL = (import.meta.env.VITE_STARKNET_NETWORK ?? "sepolia") === "mainnet"
+  ? "0x0451fe483d5921a2919ddd81d0de6696669bccdacd859f72a4fba7656b97c3b5"
+  : "0x06227c13372b8c7b7f38ad1cfe05b5cf515b4e5c596dd05fe8437ab9747b2093";
 
 // Token presets keyed by network — resolved once at module load
 const _chainId = (import.meta.env.VITE_STARKNET_NETWORK ?? "sepolia") === "mainnet"
@@ -327,13 +331,13 @@ async function redeemAllVesuSharesDirect(
 
   // Resolve vToken address from pool factory
   const vTokenRes = await provider.callContract({
-    contractAddress: VESU_SEPOLIA_POOL_FACTORY,
+    contractAddress: VESU_POOL_FACTORY,
     entrypoint: "v_token_for_asset",
-    calldata: CallData.compile([VESU_SEPOLIA_DEFAULT_POOL, tokenAddress]),
+    calldata: CallData.compile([VESU_DEFAULT_POOL, tokenAddress]),
   });
   const vTokenAddress: string = vTokenRes[0];
   if (!vTokenAddress || BigInt(String(vTokenAddress)) === 0n) {
-    throw new Error("No Vesu pool found for this token on Sepolia");
+    throw new Error("No Vesu pool found for this token");
   }
 
   // Read actual share balance (balance_of, not max_redeem which has oracle dependency)

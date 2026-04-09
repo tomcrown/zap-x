@@ -93,6 +93,31 @@ export async function redeemClaimLink(
     WHERE token = ${token}
   `;
 
+  // Record the release transaction so it appears in the recipient's activity feed
+  await sql`
+    INSERT INTO transactions
+      (sender_wallet, recipient_wallet, recipient_identifier, amount, token, tx_hash, status, note)
+    VALUES (
+      ${config.escrow.walletAddress},
+      ${recipientWallet},
+      ${recipientWallet},
+      ${row.amount},
+      ${row.token_type},
+      ${txHash},
+      'confirmed',
+      ${'Claimed via link'}
+    )
+  `;
+
+  // Also update the original send transaction so the sender's record shows the real recipient
+  if (row.escrow_tx_hash) {
+    await sql`
+      UPDATE transactions
+      SET recipient_wallet = ${recipientWallet}, status = 'confirmed'
+      WHERE tx_hash = ${row.escrow_tx_hash}
+    `;
+  }
+
   return { txHash };
 }
 

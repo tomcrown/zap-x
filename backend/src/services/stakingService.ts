@@ -8,18 +8,19 @@ import { DbStakingPosition, TokenSymbol } from '../models/types.js';
 // ─── Named Pools ───────────────────────────────────────────────────────────────
 
 export const STAKING_POOLS: Record<string, { name: string; token: TokenSymbol; apy: string }> = {
-  '0x003bc84d802c8a57cbe4eb4a6afa9b1255e907cba9377b446d6f4edf069403c5': {
-    name: 'moonli.me',
+  // Mainnet validators
+  '0x072543946080646d1aac08bb4ba6f6531b2b29ce41ebfe72b8a6506500d5220e': {
+    name: 'Karnot',
     token: 'STRK',
     apy: '~8.5%',
   },
-  '0x068b5f8e8eb23a42ad290800f229f09b1bcc8d43537dd27a127769ffa13b59f1': {
-    name: 'Teku',
+  '0x00d3b910d8c528bf0216866053c3821ac6c97983dc096bff642e9a3549210ee7': {
+    name: 'Ready (prev. Argent)',
     token: 'STRK',
     apy: '~8.5%',
   },
-  '0x05c85dd30df86ed1f2cfe1806417efb2cae421bffdee8110a74a3d3eb95b28d3': {
-    name: 'Nethermind',
+  '0x036963c7b56f08105ffdd7f12560924bdc0cb29ce210417ecbc8bf3c7e4b9090': {
+    name: 'AVNU',
     token: 'STRK',
     apy: '~8.5%',
   },
