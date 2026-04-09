@@ -102,6 +102,13 @@ CREATE TABLE IF NOT EXISTS bridge_records (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- ─── Migrations (run after initial schema creation) ───────────────────────────
+
+-- Tongo confidential transfer keys (Phase 1: private transfers)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tongo_private_key   TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tongo_public_key_x  TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tongo_public_key_y  TEXT;
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_transactions_sender     ON transactions(sender_wallet);
 CREATE INDEX IF NOT EXISTS idx_transactions_recipient  ON transactions(recipient_wallet);

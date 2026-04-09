@@ -73,6 +73,20 @@ export const walletApi = {
       import.meta.env.VITE_BACKEND_URL ?? "http://localhost:3001";
     return `${backendUrl}/api/wallet/sign`;
   },
+
+  /** Get (or generate) the user's Tongo private key for confidential transfers. */
+  getTongoKey: () =>
+    apiClient
+      .post<{ privateKey: string; publicKeyX: string | null; publicKeyY: string | null }>(
+        "/wallet/tongo",
+      )
+      .then((r) => r.data),
+
+  /** Register the Tongo public key derived on the frontend. */
+  saveTongoPublicKey: (x: string, y: string) =>
+    apiClient
+      .post<{ success: boolean }>("/wallet/tongo/pubkey", { x, y })
+      .then((r) => r.data),
 };
 
 // ─── User ──────────────────────────────────────────────────────────────────────
@@ -147,6 +161,35 @@ export const transferApi = {
     apiClient
       .get<{ transactions: Transaction[] }>("/transfer/history")
       .then((r) => r.data.transactions),
+};
+
+// ─── Private (Confidential) Transfer ──────────────────────────────────────────
+
+export const privateTransferApi = {
+  /** Resolve recipient Tongo public key. Errors if recipient hasn't activated private transfers. */
+  prepare: (recipient: string) =>
+    apiClient
+      .post<{ recipientKey: { x: string; y: string } }>("/transfer/private/prepare", {
+        recipient,
+      })
+      .then((r) => r.data),
+
+  /** Record the confidential transfer in the DB after on-chain execution. */
+  confirm: (body: {
+    senderWallet: string;
+    recipient: string;
+    amount: string;
+    token: TokenSymbol;
+    transferTxHash: string;
+    fundTxHash?: string;
+    note?: string;
+  }) =>
+    apiClient
+      .post<{ success: boolean; txHash: string; message: string }>(
+        "/transfer/private/confirm",
+        body,
+      )
+      .then((r) => r.data),
 };
 
 // ─── Claim ────────────────────────────────────────────────────────────────────

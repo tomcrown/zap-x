@@ -12,7 +12,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
-import { connectPrivyWallet, resetStarkZap, getAllBalances } from '../lib/starkzap.js';
+import { connectPrivyWallet, resetStarkZap, getAllBalances, getOrInitTongoConfidential } from '../lib/starkzap.js';
 import { userApi, walletApi, registerTokenGetter } from '../lib/api.js';
 import { UserProfile, TokenSymbol } from '../types/index.js';
 
@@ -150,6 +150,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (authenticated && walletAddress && isSdkReady) {
       refreshBalances();
+      // Silently initialise the Tongo key so this user can receive private transfers
+      // from anyone — runs in background, never blocks the UI.
+      getOrInitTongoConfidential('STRK').catch(() => {});
     } else if (!authenticated) {
       setBalances({} as Record<TokenSymbol, string>);
     }

@@ -108,6 +108,7 @@ export interface ParsedAction {
   frequency?: string;
   collateralToken?: TokenSymbol;
   cycles?: number;
+  private?: boolean;
 }
 
 export interface AIParseResult {

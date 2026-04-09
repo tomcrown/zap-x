@@ -1,209 +1,310 @@
-# ⚡ Zap-X — Instant STRK & Bitcoin Transfers on Starknet
+# Zap-X — Instant Token Transfers on Starknet
 
-> Hackathon project: gasless token transfers, AI command parsing, claim links for new users, and staking yield — all in one app.
+Zap-X is a non-custodial crypto transfer app built on Starknet. Send STRK to anyone — by wallet address, or email — with no gas fees, no seed phrases, and no crypto knowledge required. For recipients without a wallet, Zap-X creates one automatically and emails them a claim link.
 
-## ✨ Features
+Live at: [zapx.vercel.app](https://zapx.vercel.app)
 
-| Feature | Stack |
-|---|---|
-| Send STRK / BTC to @username, email, or address | Starkzap SDK v2 |
-| Auto-create wallets for new recipients | Privy Embedded Wallets |
-| Gasless transactions | AVNU Paymaster |
-| Claim links with email notifications | Nodemailer + Escrow |
-| AI natural language commands | Google Gemini |
-| Staking / yield dashboard | Starknet Staking Protocol |
-| Full dashboard with history | React + TailwindCSS |
+---
 
-## 🏗️ Architecture
+## Features
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Zap-X Frontend (React)                     │
-│  Privy Auth → Starkzap SDK → On-chain Tx                     │
-│  Dashboard | Send | Stake | Claim pages                      │
-└─────────────────────┬──────────────────────┬────────────────┘
-                      │ REST API              │
-┌─────────────────────▼──────────────────────▼────────────────┐
-│                   Zap-X Backend (Express)                     │
-│  User Registry | Claim Links | Email | AI Parser             │
-│  SQLite DB (better-sqlite3)                                  │
-└──────────────────────────────────────────────────────────────┘
-                      │
-        ┌─────────────┼─────────────┐
-        ▼             ▼             ▼
-    Starknet      AVNU Paymaster   Gemini AI
-    (Sepolia)     (gasless tx)     (NL parsing)
-```
+| Feature              | Description                                                                                  |
+| -------------------- | -------------------------------------------------------------------------------------------- |
+| Send to anyone       | Send STRK to a wallet address, @username, or email address                                   |
+| Private transfers    | On-chain confidential transfers — amount and recipient hidden using Tongo/ElGamal encryption |
+| Auto-create wallets  | New recipients get a Privy-managed Starknet wallet created automatically                     |
+| Claim links          | Unregistered recipients get an email with a claim link to collect funds                      |
+| Gasless transactions | All transactions sponsored by AVNU Paymaster — zero gas cost for users                       |
+| AI natural language  | Type "send 5 STRK to alice@example.com" and Gemini parses the intent                         |
+| Staking              | Stake STRK into Starknet staking pools, view live yield and positions                        |
+| Transaction history  | Full history of sent/received transfers with status tracking                                 |
+| Email notifications  | Both sender and recipient get email confirmations on every transfer                          |
 
-## 🚀 Quick Start
+---
 
-### Prerequisites
-- Node.js 20+
-- Privy account: https://dashboard.privy.io
-- AVNU API key: https://portal.avnu.fi
-- Gemini API key: https://makersuite.google.com/app/apikey
-- SMTP credentials (Gmail App Password or Resend)
+## How It Works
 
-### 1. Backend Setup
+### Authentication
 
-```bash
-cd backend
-npm install
-cp .env.example .env
-# Fill in .env with your API keys
-npm run dev
-```
+Users sign in with email or Google via Privy. No wallet setup required — Privy creates a Starknet wallet server-side and the app derives the address. The private key never leaves Privy's infrastructure.
 
-### 2. Frontend Setup
+### Sending Tokens
 
-```bash
-cd frontend
-npm install
-cp .env.example .env
-# Fill in .env with your API keys
-npm run dev
-```
+1. User enters an amount, token, and recipient (address / @username / email)
+2. The frontend calls `/api/transfer/prepare` to resolve the recipient
+3. If the recipient has a wallet, the transfer goes directly on-chain via the Starkzap SDK
+4. If the recipient has no wallet, a claim link is emailed to them
 
-### 3. Open in Browser
+### Claim Links
 
-```
-http://localhost:5173
-```
+When a recipient doesn't have a Zap-X account:
 
-## 🔑 Environment Variables
-
-### Backend (`backend/.env`)
-
-```env
-PORT=3001
-JWT_SECRET=your-secret
-PRIVY_APP_ID=your-privy-app-id
-PRIVY_APP_SECRET=your-privy-app-secret
-STARKNET_NETWORK=sepolia
-STARKNET_RPC_URL=https://starknet-sepolia.public.blastapi.io/rpc/v0_7
-ESCROW_WALLET_ADDRESS=0x...   # Funded with STRK for escrow releases
-ESCROW_PRIVATE_KEY=0x...
-AVNU_PAYMASTER_URL=https://sepolia.paymaster.avnu.fi
-AVNU_API_KEY=your-avnu-key
-GEMINI_API_KEY=your-gemini-key
-SMTP_HOST=smtp.gmail.com
-SMTP_USER=you@gmail.com
-SMTP_PASS=your-app-password
-```
-
-### Frontend (`frontend/.env`)
-
-```env
-VITE_PRIVY_APP_ID=your-privy-app-id
-VITE_STARKNET_NETWORK=sepolia
-VITE_AVNU_API_KEY=your-avnu-key
-```
-
-## 💡 How It Works
-
-### Send to Email (Escrow Flow)
-1. Alice enters `bob@example.com` as recipient
-2. Frontend calls `/api/transfer/prepare` → gets escrow address
-3. Frontend signs and submits transfer to escrow wallet (via Starkzap SDK)
-4. Frontend calls `/api/transfer/confirm` → backend creates claim link
-5. Bob receives an email with a claim link
-6. Bob clicks link → authenticates with Privy → new wallet created automatically
-7. Bob clicks "Claim" → backend releases escrow to Bob's new wallet
-
-### AI Commands
-1. User types: `"Send 5 STRK to @alice and stake 10 STRK"`
-2. Frontend sends to `/api/ai/parse`
-3. Gemini extracts: `[{type:'send', amount:'5', token:'STRK', recipient:'@alice'}, {type:'stake', amount:'10', token:'STRK'}]`
-4. Frontend pre-fills the send form
+1. Funds are sent to the escrow wallet
+2. A unique claim token is generated and stored in the database
+3. The recipient receives an email with a link: `zapx.vercel.app/claim/<token>`
+4. They click the link, sign in with Privy (their email), and a wallet is auto-created
+5. The backend releases escrow funds to their new wallet via a signed transfer
 
 ### Gasless Transactions
-- All on-chain calls go through AVNU Paymaster
-- User signs with Privy wallet — no ETH/STRK needed for gas
-- The app (or AVNU) sponsors the gas fees
 
-## 📦 Tech Stack
+Every on-chain transaction is submitted through AVNU's paymaster. Users sign with their Privy wallet but never hold STRK for gas. The app sponsors all fees.
 
-**Frontend**
+### AI Command Parsing
+
+The send form includes a natural language input bar. Users can type things like:
+
+- "Send 10 STRK to @tomcrown"
+- "Transfer 0.5 STRK to alice@example.com with note birthday gift"
+
+Google Gemini parses the intent and pre-fills the form fields automatically.
+
+### Private Transfers (Tongo Confidential)
+
+For maximum privacy, users can send confidential transfers where the amount and recipient address are hidden on-chain. This uses the Tongo protocol — ElGamal encryption with ZK proofs on Starknet:
+
+1. Both sender and recipient must have a Tongo key (generated automatically on first login)
+2. The sender's Tongo balance is funded from their public STRK balance
+3. A confidential transfer is submitted — only the sender and recipient can decrypt the amount
+4. The recipient can decrypt and withdraw their balance at any time
+
+### Staking
+
+Users can stake STRK directly into Starknet's native staking protocol. The dashboard shows live staking positions, accumulated yield, and allows starting / cancelling withdrawal intents.
+
+---
+
+## Tech Stack
+
+### Frontend
+
 - React 18 + TypeScript + Vite
 - TailwindCSS (dark theme, custom design system)
 - Privy React Auth (`@privy-io/react-auth`)
-- Starkzap SDK v2 (`starkzap`)
-- TanStack Query for data fetching
+- Starkzap SDK v2 (Starknet transfers, staking, Tongo confidential)
 - React Router v6
+- Axios for API calls
 
-**Backend**
+### Backend
+
 - Node.js 20 + Express + TypeScript
-- Privy Server Auth (`@privy-io/server-auth`)
-- Google Gemini (`@google/generative-ai`)
-- Nodemailer for email
-- better-sqlite3 for local DB
-- Starknet.js for escrow wallet signing
-- Zod for request validation
+- Privy Server Auth (`@privy-io/server-auth`) — user lookup, JWT verification
+- Privy Node SDK (`@privy-io/node`) — wallet creation, server-side signing
+- PostgreSQL via `postgres` (node-postgres tagged templates)
+- Nodemailer — claim emails and transfer notifications
+- Google Gemini (`@google/generative-ai`) — AI command parsing
+- Starknet.js — escrow wallet signing and address utilities
+- Zod — request validation
 
-**Blockchain**
-- Starknet (Sepolia testnet / Mainnet)
-- Starkzap SDK v2 (transfers, staking, batching)
-- AVNU Paymaster (gasless transactions)
-- Privy Embedded Wallets (auto-creation for new users)
+### Blockchain
 
-## 📁 Project Structure
+- Starknet Mainnet
+- Starkzap SDK v2 — token transfers, staking, batched transactions, Tongo confidential
+- AVNU Paymaster — gasless sponsored transactions
+- Tongo Protocol — on-chain confidential transfers (ElGamal + ZK proofs)
+
+---
+
+## Integrations
+
+| Integration          | Purpose                                                  |
+| -------------------- | -------------------------------------------------------- |
+| Privy                | Embedded wallets, email/Google auth, server-side signing |
+| AVNU Paymaster       | Gasless transaction sponsorship                          |
+| Tongo (via Starkzap) | On-chain confidential/private transfers                  |
+| Google Gemini        | Natural language AI command parsing                      |
+| Nodemailer           | Transactional emails (claims, transfer confirmations)    |
+| PostgreSQL           | User registry, transaction history, claim links          |
+| Starknet RPC         | On-chain reads (balances, staking positions)             |
+
+---
+
+## Supported Tokens
+
+| Token       | Type                  | Network |
+| ----------- | --------------------- | ------- |
+| STRK        | Native Starknet token | Mainnet |
+| ETH         | Wrapped Ether         | Mainnet |
+| BTC (cbBTC) | Coinbase Wrapped BTC  | Mainnet |
+| USDC        | USD Coin              | Mainnet |
+| USDT        | Tether                | Mainnet |
+
+---
+
+## Project Structure
 
 ```
 zap-x/
 ├── backend/
 │   └── src/
-│       ├── config/       # Environment config
-│       ├── db/           # SQLite setup + schema
-│       ├── middleware/   # Auth, validation, errors
-│       ├── models/       # TypeScript types
-│       ├── routes/       # API routes
-│       ├── services/     # Business logic
-│       └── utils/        # Helpers, crypto
-├── frontend/
-│   └── src/
-│       ├── components/
-│       │   ├── claim/    # Claim page
-│       │   ├── common/   # Shared UI
-│       │   ├── dashboard/# Dashboard panels
-│       │   ├── layout/   # Navbar, sidebar
-│       │   └── send/     # Send form + AI bar
-│       ├── contexts/     # React context providers
-│       ├── hooks/        # Custom hooks
-│       ├── lib/          # API client, Starkzap wrapper
-│       ├── pages/        # Route-level pages
-│       └── types/        # TypeScript types
-└── README.md
+│       ├── config/         # Environment config loader
+│       ├── db/             # PostgreSQL setup + schema migrations
+│       ├── middleware/     # Auth (Privy JWT), error handler
+│       ├── models/         # TypeScript types and interfaces
+│       ├── routes/         # Express API routes
+│       │   ├── ai.ts       # POST /api/ai/parse
+│       │   ├── claim.ts    # Claim link creation and redemption
+│       │   ├── staking.ts  # Staking position queries
+│       │   ├── transfer.ts # Send prepare/confirm + private transfers
+│       │   ├── user.ts     # Profile, registration, username
+│       │   └── wallet.ts   # Starknet wallet + Tongo key management
+│       ├── services/
+│       │   ├── aiService.ts       # Gemini integration
+│       │   ├── claimService.ts    # Claim link lifecycle
+│       │   ├── emailService.ts    # Nodemailer templates
+│       │   ├── stakingService.ts  # Staking queries
+│       │   ├── transferService.ts # Transfer resolution + recording
+│       │   └── walletService.ts   # Privy wallet + Tongo key management
+│       └── utils/
+│           ├── crypto.ts   # Address validation, recipient type detection
+│           └── helpers.ts  # Username normalisation
+└── frontend/
+    └── src/
+        ├── components/
+        │   ├── claim/      # Claim page flow
+        │   ├── common/     # Shared UI (buttons, inputs, modals)
+        │   ├── dashboard/  # Portfolio, balance, history panels
+        │   ├── layout/     # Navbar, sidebar
+        │   └── send/       # Send form + AI bar + private toggle
+        ├── contexts/
+        │   └── WalletContext.tsx  # Auth state, wallet address, balances
+        ├── hooks/          # Custom React hooks
+        ├── lib/
+        │   ├── api.ts      # Typed API client (axios)
+        │   └── starkzap.ts # Starkzap SDK wrapper (transfers, staking, Tongo)
+        ├── pages/          # Route-level page components
+        └── types/          # Shared TypeScript types
 ```
-
-## 🔗 Key Starkzap SDK Calls
-
-```typescript
-// Transfer (gasless)
-await wallet.transfer(STRK, { to: address, amount: Amount.parse('5', STRK) });
-
-// Stake
-await wallet.stake(poolAddress, Amount.parse('10', STRK));
-
-// Exit intent (start cooldown)
-await wallet.exitPoolIntent(poolAddress, Amount.parse('10', STRK));
-
-// Batch: send + stake in one tx
-const tx = new TxBuilder(wallet);
-tx.addTransfer(STRK, { to: address, amount: Amount.parse('5', STRK) });
-tx.addStake(poolAddress, Amount.parse('10', STRK));
-await tx.execute({ feeMode: { mode: 'default' } }); // single gasless tx
-```
-
-## 🌐 Demo Pages
-
-| Route | Description |
-|---|---|
-| `/` | Landing / Login |
-| `/dashboard` | Portfolio overview |
-| `/send` | Send STRK/Bitcoin + AI bar |
-| `/stake` | Staking positions + yield |
-| `/claim/:token` | Public claim page (no login required) |
 
 ---
 
-Built for hackathon · Starknet Ecosystem · April 2026
+## Running Locally
+
+### Prerequisites
+
+- Node.js 20+
+- PostgreSQL database (local or hosted, e.g. Supabase / Neon)
+- [Privy](https://privy.io) app — for embedded wallets and auth
+- [AVNU](https://avnu.fi) API key — for gasless transactions
+- [Google AI Studio](https://aistudio.google.com) API key — for AI parsing
+- SMTP credentials — Gmail App Password or a transactional email provider
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/your-org/zap-x.git
+cd zap-x
+
+# Install backend dependencies
+cd backend && npm install
+
+# Install frontend dependencies
+cd ../frontend && npm install
+```
+
+### 2. Configure the backend
+
+```bash
+cd backend
+cp .env.example .env
+```
+
+Edit `backend/.env`:
+
+```env
+PORT=3001
+DATABASE_URL=postgresql://user:password@localhost:5432/zapx
+
+# Privy
+PRIVY_APP_ID=your-privy-app-id
+PRIVY_APP_SECRET=your-privy-app-secret
+PRIVY_WALLET_PUBLIC_KEY=your-privy-server-wallet-public-key
+PRIVY_WALLET_PRIVATE_KEY=your-privy-server-wallet-private-key
+
+# Starknet
+STARKNET_NETWORK=mainnet
+STARKNET_RPC_URL=https://starknet-mainnet.public.blastapi.io/rpc/v0_7
+
+# Escrow wallet (funded with STRK for escrow releases)
+ESCROW_WALLET_ADDRESS=0x...
+ESCROW_PRIVATE_KEY=0x...
+
+# AVNU Paymaster
+AVNU_PAYMASTER_URL=https://paymaster.avnu.fi
+AVNU_API_KEY=your-avnu-api-key
+
+# Google Gemini
+GEMINI_API_KEY=your-gemini-api-key
+
+# Email (SMTP)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=you@gmail.com
+SMTP_PASS=your-gmail-app-password
+SMTP_FROM=Zap-X <you@gmail.com>
+
+# Frontend URL (for claim links in emails)
+FRONTEND_URL=http://localhost:5173
+```
+
+### 3. Configure the frontend
+
+```bash
+cd frontend
+cp .env.example .env
+```
+
+Edit `frontend/.env`:
+
+```env
+VITE_API_URL=http://localhost:3001
+VITE_PRIVY_APP_ID=your-privy-app-id
+VITE_STARKNET_NETWORK=mainnet
+VITE_AVNU_API_KEY=your-avnu-api-key
+```
+
+### 4. Run database migrations
+
+```bash
+cd backend
+npm run migrate
+```
+
+### 5. Start the servers
+
+```bash
+# Terminal 1 — backend
+cd backend && npm run dev
+
+# Terminal 2 — frontend
+cd frontend && npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173)
+
+---
+
+## API Reference
+
+| Method | Endpoint                        | Description                                      |
+| ------ | ------------------------------- | ------------------------------------------------ |
+| POST   | `/api/user/register`            | Register or update user profile                  |
+| GET    | `/api/user/me`                  | Get authenticated user profile                   |
+| PUT    | `/api/user/username`            | Set / change username                            |
+| GET    | `/api/user/lookup/:identifier`  | Look up user by address, username, or email      |
+| POST   | `/api/wallet/starknet`          | Create or fetch Privy Starknet wallet            |
+| POST   | `/api/wallet/sign`              | Proxy Privy rawSign for transaction hashes       |
+| POST   | `/api/wallet/tongo`             | Get or generate Tongo private key                |
+| POST   | `/api/wallet/tongo/pubkey`      | Save Tongo public key coordinates                |
+| POST   | `/api/transfer/prepare`         | Resolve recipient and determine escrow vs direct |
+| POST   | `/api/transfer/confirm`         | Record confirmed transfer, create claim links    |
+| POST   | `/api/transfer/private/prepare` | Resolve recipient for a private Tongo transfer   |
+| POST   | `/api/transfer/private/confirm` | Record confirmed private transfer                |
+| GET    | `/api/transfer/history`         | Get transaction history for authenticated user   |
+| POST   | `/api/claim/redeem`             | Redeem a claim link and release escrow           |
+| GET    | `/api/claim/:token`             | Get claim link details                           |
+| GET    | `/api/staking/positions`        | Get staking positions for wallet                 |
+| POST   | `/api/ai/parse`                 | Parse natural language command with Gemini       |
+
+---
+
+Built on Starknet · April 2026

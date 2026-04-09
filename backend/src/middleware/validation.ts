@@ -67,6 +67,20 @@ export const aiParseSchema = z.object({
   command: z.string().min(2).max(500),
 });
 
+export const privateTransferPrepareSchema = z.object({
+  recipient: z.string().min(3).max(200),
+});
+
+export const privateTransferConfirmSchema = z.object({
+  senderWallet: starknetAddressSchema,
+  recipient: z.string().min(3).max(200),
+  amount: amountSchema,
+  token: tokenSchema,
+  transferTxHash: z.string().regex(/^0x[0-9a-fA-F]+$/),
+  fundTxHash: z.string().regex(/^0x[0-9a-fA-F]+$/).optional(),
+  note: z.string().max(200).optional(),
+});
+
 // ─── Middleware factory ────────────────────────────────────────────────────────
 
 export function validate<T>(schema: ZodSchema<T>) {

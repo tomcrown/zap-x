@@ -16,6 +16,7 @@ import {
   ExternalChain,
   ConnectedEthereumWallet,
   EthereumNetwork,
+  TongoConfidential,
 } from "starkzap";
 import { CallData, uint256, RpcProvider } from "starknet";
 import type { TokenSymbol } from "../types/index.js";
@@ -124,6 +125,12 @@ export function getConnectedWallet() {
 export function resetStarkZap(): void {
   _sdk = null;
   _wallet = null;
+  // Clear Tongo session state so the next user gets fresh keys
+  for (const k of Object.keys(_tongoInstances)) {
+    delete _tongoInstances[k as TokenSymbol];
+  }
+  _tongoPrivateKey = null;
+  _tongoPubKeyRegistered = false;
 }
 
 // ─── Token Helper ─────────────────────────────────────────────────────────────
@@ -912,6 +919,238 @@ export async function claimPoolRewards(poolAddress: string): Promise<string> {
   const wallet = getConnectedWallet();
   const result = await wallet.claimPoolRewards(poolAddress);
   return result.hash;
+}
+
+// ─── Private Transfers (Tongo Confidential) ───────────────────────────────────
+
+/** Tongo contract addresses per token per network. Each token has its own Tongo vault. */
+const TONGO_CONTRACTS: Partial<Record<TokenSymbol, string>> =
+  _chainId === ChainId.MAINNET
+    ? {
+        STRK: "0x3a542d7eb73b3e33a2c54e9827ec17a6365e289ec35ccc94dde97950d9db498",
+        ETH: "0x276e11a5428f6de18a38b7abc1d60abc75ce20aa3a925e20a393fcec9104f89",
+        USDC: "0x026f79017c3c382148832c6ae50c22502e66f7a2f81ccbdb9e1377af31859d3a",
+      }
+    : {
+        STRK: "0x408163bfcfc2d76f34b444cb55e09dace5905cf84c0884e4637c2c0f06ab6ed",
+        ETH: "0x2cf0dc1d9e8c7731353dd15e6f2f22140120ef2d27116b982fa4fed87f6fef5",
+        USDC: "0x2caae365e67921979a4e5c16dd70eaa5776cfc6a9592bcb903d91933aaf2552",
+      };
+
+/** Token symbols that support private (confidential) transfers. */
+export const PRIVATE_TRANSFER_TOKENS: TokenSymbol[] = ["STRK", "ETH", "USDC"];
+
+export function isPrivateTransferSupported(token: TokenSymbol): boolean {
+  return token in TONGO_CONTRACTS;
+}
+
+// One TongoConfidential instance per token (same private key, different contract per token).
+const _tongoInstances: Partial<Record<TokenSymbol, TongoConfidential>> = {};
+// Cached private key for the session — fetched once from backend, kept in memory.
+let _tongoPrivateKey: string | null = null;
+// Track whether the public key has been registered on the backend this session.
+let _tongoPubKeyRegistered = false;
+
+/** Fetch and cache the Tongo private key from the backend. */
+async function fetchTongoPrivateKey(): Promise<string> {
+  if (_tongoPrivateKey) return _tongoPrivateKey;
+  const { walletApi } = await import("./api.js");
+  const result = await walletApi.getTongoKey();
+  _tongoPrivateKey = result.privateKey;
+  // If the public key is already stored, mark as registered so we skip the round-trip.
+  if (result.publicKeyX && result.publicKeyY) _tongoPubKeyRegistered = true;
+  return _tongoPrivateKey;
+}
+
+/**
+ * Get (or lazily create) the TongoConfidential instance for a given token.
+ * On first call per token, fetches the private key from the backend, creates
+ * the instance, and registers the derived public key on the backend.
+ */
+export async function getOrInitTongoConfidential(
+  token: TokenSymbol,
+): Promise<TongoConfidential> {
+  if (_tongoInstances[token]) return _tongoInstances[token]!;
+
+  const contractAddress = TONGO_CONTRACTS[token];
+  if (!contractAddress)
+    throw new Error(
+      `Private transfers are only supported for ${PRIVATE_TRANSFER_TOKENS.join(", ")}.`,
+    );
+
+  const privateKey = await fetchTongoPrivateKey();
+  const rpcUrl = import.meta.env.VITE_STARKNET_RPC_URL as string | undefined;
+  const provider = new RpcProvider({ nodeUrl: rpcUrl });
+
+  const instance = new TongoConfidential({
+    privateKey,
+    contractAddress: contractAddress as any,
+    provider: provider as any,
+  });
+  _tongoInstances[token] = instance;
+
+  // Register public key once per session (fire-and-forget — non-blocking).
+  if (!_tongoPubKeyRegistered) {
+    _tongoPubKeyRegistered = true;
+    const { x, y } = instance.recipientId;
+    const { walletApi } = await import("./api.js");
+    walletApi
+      .saveTongoPublicKey(String(x), String(y))
+      .catch(() => { _tongoPubKeyRegistered = false; }); // retry allowed on next init
+  }
+
+  return instance;
+}
+
+export type PrivateTransferStep = "initializing" | "funding" | "transferring";
+
+export interface PrivateTransferResult {
+  fundTxHash?: string;
+  transferTxHash: string;
+}
+
+/**
+ * Execute a private (confidential) token transfer via the Tongo protocol.
+ *
+ * Flow:
+ *  1. Initialise the sender's TongoConfidential instance (fetches key from backend once).
+ *  2. Read on-chain confidential balance. If insufficient, fund first (public → private).
+ *  3. Submit the confidential transfer (ZK proof generated locally in-browser).
+ *
+ * Two transactions are submitted when funding is needed; one when the sender
+ * already has enough private balance from previous operations.
+ *
+ * @param params.recipientKey   Recipient's Tongo public key {x, y} from /api/transfer/private/prepare
+ * @param params.amount         Human-readable amount string e.g. "10"
+ * @param params.token          Token symbol (STRK | ETH | USDC)
+ * @param params.gasless        Whether to use AVNU paymaster
+ * @param onProgress            Optional callback for step-level UI updates
+ */
+/**
+ * Send a Tongo tx, trying sponsored gas first then falling back to user_pays.
+ * Takes a factory function so the builder is re-created on retry (builders
+ * may not be reusable after a failed .send() call).
+ */
+async function sendTongoTx(
+  buildTx: () => any,
+  gasless: boolean,
+): Promise<any> {
+  if (!gasless) return buildTx().send();
+  try {
+    return await buildTx().send({ feeMode: "sponsored" as any });
+  } catch (err: any) {
+    // Paymaster doesn't support confidential tx types — fall back to user paying gas.
+    // Always retry with user_pays so the transfer isn't blocked by paymaster support.
+    return buildTx().send({ feeMode: "user_pays" as any });
+  }
+}
+
+export async function executePrivateTransfer(
+  params: {
+    recipientKey: { x: string; y: string };
+    amount: string;
+    token: TokenSymbol;
+    gasless?: boolean;
+  },
+  onProgress?: (step: PrivateTransferStep) => void,
+): Promise<PrivateTransferResult> {
+  const tokenObj = getToken(params.token);
+  const wallet = getConnectedWallet();
+
+  await wallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" as any });
+
+  onProgress?.("initializing");
+  const confidential = await getOrInitTongoConfidential(params.token);
+
+  // parsedAmount is in ERC20 base units (e.g. 10^18 for 1 STRK).
+  // Tongo operates in its own compressed unit space (max 2^32).
+  // The SDK's confidentialFund/Transfer expect Amount.fromRaw(tongoUnits, token),
+  // so we must convert first. Using parsedAmount directly causes a unit mismatch
+  // where the balance check (tongo units) always fails against ERC20 base units.
+  const parsedAmount = Amount.parse(params.amount, tokenObj as any);
+  const neededUnits = await confidential.toConfidentialUnits(parsedAmount);
+  // Amount whose .toBase() returns tongo units (what the SDK actually wants)
+  const tongoAmount = Amount.fromRaw(neededUnits, tokenObj as any);
+
+  // Compare current confidential balance against what we need.
+  const state = await confidential.getState();
+
+  let fundTxHash: string | undefined;
+
+  if (state.balance < neededUnits) {
+    onProgress?.("funding");
+
+    // Verify the user has enough public balance before attempting on-chain fund.
+    const publicBalance = await wallet.balanceOf(tokenObj as any);
+    if (publicBalance.toBase() < parsedAmount.toBase()) {
+      throw new Error(
+        `Insufficient ${params.token} balance. You have ${publicBalance.toUnit()} but need ${params.amount}.`,
+      );
+    }
+
+    // Deposit the required amount from the public wallet into the Tongo contract.
+    // Pass tongoAmount (not parsedAmount) — the SDK multiplies by the on-chain rate
+    // to compute the ERC20 approval, so the base value must be in tongo units.
+    const fundResult = await sendTongoTx(
+      () => wallet.tx().confidentialFund(confidential, { amount: tongoAmount, sender: wallet.address }),
+      params.gasless ?? false,
+    );
+    fundTxHash = (fundResult as any).hash;
+
+    // Wait for the fund tx to be reflected in the on-chain Tongo state before
+    // building the ZK transfer proof (proof is tied to the current ciphertext).
+    let stateAfterFund = state;
+    for (let i = 0; i < 15; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      stateAfterFund = await confidential.getState();
+      if (stateAfterFund.balance >= neededUnits) break;
+    }
+
+    if (stateAfterFund.balance < neededUnits) {
+      throw new Error(
+        "Funding transaction confirmed but confidential balance hasn't updated yet. Please try again in a moment.",
+      );
+    }
+  }
+
+  onProgress?.("transferring");
+
+  const transferResult = await sendTongoTx(
+    () => wallet.tx().confidentialTransfer(confidential, {
+      amount: tongoAmount,  // tongo units, not ERC20 base
+      to: {
+        x: BigInt(params.recipientKey.x),
+        y: BigInt(params.recipientKey.y),
+      },
+      sender: wallet.address,
+    }),
+    params.gasless ?? false,
+  );
+
+  return {
+    fundTxHash,
+    transferTxHash: (transferResult as any).hash,
+  };
+}
+
+/**
+ * Get the user's current confidential balance for a token.
+ * Returns human-readable strings for active (spendable) and pending (needs rollover) balances.
+ */
+export async function getTongoBalance(
+  token: TokenSymbol,
+): Promise<{ active: string; pending: string }> {
+  const tokenObj = getToken(token);
+  const confidential = await getOrInitTongoConfidential(token);
+  const state = await confidential.getState();
+
+  const activeBase = await confidential.toPublicUnits(state.balance);
+  const pendingBase = await confidential.toPublicUnits(state.pending);
+
+  return {
+    active: Amount.fromRaw(activeBase, tokenObj as any).toUnit(),
+    pending: Amount.fromRaw(pendingBase, tokenObj as any).toUnit(),
+  };
 }
 
 // ─── Batch Operations (TxBuilder) ────────────────────────────────────────────

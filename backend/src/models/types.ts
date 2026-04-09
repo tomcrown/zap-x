@@ -16,6 +16,9 @@ export interface DbUser {
   privy_user_id: string | null;
   privy_wallet_id: string | null;
   privy_wallet_public_key: string | null;
+  tongo_private_key: string | null;
+  tongo_public_key_x: string | null;
+  tongo_public_key_y: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -131,6 +134,7 @@ export interface ParsedAction {
   frequency?: string;          // dca: ISO 8601 duration e.g. "P1D", "P7D", "P1M"
   collateralToken?: TokenSymbol; // borrow/repay: collateral token
   cycles?: number;             // dca: number of cycles (optional)
+  private?: boolean;           // send: hide amount + recipient on-chain via Tongo
 }
 
 export interface AIParseResult {

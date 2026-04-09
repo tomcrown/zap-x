@@ -11,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   chatApi,
   transferApi,
+  privateTransferApi,
   swapApi,
   lendingApi,
   dcaApi,
@@ -18,6 +19,8 @@ import {
 } from "../../lib/api.js";
 import {
   executeTransfer,
+  executePrivateTransfer,
+  isPrivateTransferSupported,
   executeSwap,
   executeLendingDeposit,
   executeLendingWithdraw,
@@ -80,6 +83,26 @@ const QUICK_COMMANDS = [
       </svg>
     ),
     fill: "Send  STRK to ",
+    send: false,
+  },
+  {
+    label: "Private",
+    icon: (
+      <svg
+        className="w-3.5 h-3.5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+        />
+      </svg>
+    ),
+    fill: "Send  STRK privately to ",
     send: false,
   },
   {
@@ -414,6 +437,11 @@ const HELP_COMMANDS = [
         label: "Send to wallet",
         example: "send 5 STRK to 0x04a…",
         fill: "Send 5 STRK to ",
+      },
+      {
+        label: "Send privately",
+        example: "send 5 STRK privately to @alice",
+        fill: "Send 5 STRK privately to ",
       },
     ],
   },
@@ -897,31 +925,53 @@ export function AIExecutor() {
 
       switch (action.type) {
         case "send": {
-          const prep = await transferApi.prepare({
-            senderWallet: walletAddress,
-            recipient: action.recipient!,
-            amount: action.amount,
-            token: action.token,
-            gasless: true,
-          });
-          txHash = await executeTransfer({
-            toAddress: prep.toAddress,
-            amount: action.amount,
-            token: action.token,
-            gasless: true,
-          });
-          await transferApi.confirm({
-            senderWallet: walletAddress,
-            recipient: action.recipient!,
-            amount: action.amount,
-            token: action.token,
-            txHash,
-            recipientEmail: prep.recipientEmail,
-            needsEscrow: prep.needsEscrow,
-          });
-          resultText = prep.needsEscrow
-            ? `${action.amount} ${action.token} sent — claim link emailed to ${action.recipient}`
-            : `${action.amount} ${action.token} sent to ${action.recipient}`;
+          if (action.private && isPrivateTransferSupported(action.token)) {
+            // ── Private (confidential) transfer ──────────────────────────
+            const prep = await privateTransferApi.prepare(action.recipient!);
+            const result = await executePrivateTransfer({
+              recipientKey: prep.recipientKey,
+              amount: action.amount,
+              token: action.token,
+              gasless: true,
+            });
+            txHash = result.transferTxHash;
+            await privateTransferApi.confirm({
+              senderWallet: walletAddress,
+              recipient: action.recipient!,
+              amount: action.amount,
+              token: action.token,
+              transferTxHash: result.transferTxHash,
+              fundTxHash: result.fundTxHash,
+            });
+            resultText = `${action.amount} ${action.token} sent privately to ${action.recipient} — amount & recipient hidden on-chain`;
+          } else {
+            // ── Normal transfer ───────────────────────────────────────────
+            const prep = await transferApi.prepare({
+              senderWallet: walletAddress,
+              recipient: action.recipient!,
+              amount: action.amount,
+              token: action.token,
+              gasless: true,
+            });
+            txHash = await executeTransfer({
+              toAddress: prep.toAddress,
+              amount: action.amount,
+              token: action.token,
+              gasless: true,
+            });
+            await transferApi.confirm({
+              senderWallet: walletAddress,
+              recipient: action.recipient!,
+              amount: action.amount,
+              token: action.token,
+              txHash,
+              recipientEmail: prep.recipientEmail,
+              needsEscrow: prep.needsEscrow,
+            });
+            resultText = prep.needsEscrow
+              ? `${action.amount} ${action.token} sent — claim link emailed to ${action.recipient}`
+              : `${action.amount} ${action.token} sent to ${action.recipient}`;
+          }
           break;
         }
         case "swap": {

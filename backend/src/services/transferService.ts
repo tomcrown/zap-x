@@ -20,9 +20,11 @@ import {
   lookupByEmail,
   lookupByIdentifier,
   lookupByUsername,
+  lookupByAddress,
+  getTongoPublicKey,
 } from "./walletService.js";
 import { createClaimLink } from "./claimService.js";
-import { sendClaimEmail } from "./emailService.js";
+import { sendClaimEmail, sendTransferConfirmation } from "./emailService.js";
 
 // ─── Resolve recipient ─────────────────────────────────────────────────────────
 
@@ -55,7 +57,7 @@ export async function resolveRecipient(
       const email = recipient.toLowerCase().trim();
       const user = await lookupByEmail(email);
       if (user) {
-        return { recipientAddress: user.walletAddress, needsEscrow: false };
+        return { recipientAddress: user.walletAddress, needsEscrow: false, recipientEmail: email };
       }
       return {
         recipientAddress: config.escrow.walletAddress || null,
@@ -144,6 +146,21 @@ export async function recordConfirmedTransfer(params: {
     );
   }
 
+  // Send notification email to registered recipients (non-escrow).
+  // resolveRecipient now returns recipientEmail for email-type recipients even when registered.
+  const notifyEmail = !params.needsEscrow ? (params.recipientEmail ?? resolution.recipientEmail) : null;
+  if (notifyEmail) {
+    sendTransferConfirmation({
+      toEmail: notifyEmail,
+      senderAddress: params.senderWallet,
+      amount: params.amount,
+      token: params.token,
+      txHash: params.txHash,
+    }).catch((err) =>
+      console.error('[EmailService] Failed to send transfer notification:', err),
+    );
+  }
+
   await sql`
     INSERT INTO transactions
       (sender_wallet, recipient_wallet, recipient_identifier, amount, token, tx_hash, status, note, claim_link_id)
@@ -168,6 +185,100 @@ export async function recordConfirmedTransfer(params: {
     message: params.needsEscrow
       ? `A claim link has been sent to ${params.recipientEmail}.`
       : `Transfer of ${params.amount} ${params.token} submitted successfully.`,
+  };
+}
+
+// ─── Private transfer (Tongo confidential) ────────────────────────────────────
+
+/**
+ * Resolve the recipient of a private transfer.
+ * Both sender and recipient must be registered ZAP-X users with an activated
+ * Tongo account (i.e. they have opened the app at least once after this feature
+ * shipped so their public key was derived and stored).
+ */
+export async function resolvePrivateRecipient(recipient: string): Promise<{
+  recipientAddress: string;
+  recipientEmail?: string;
+  tongoKey: { x: string; y: string };
+}> {
+  const type = detectRecipientType(recipient);
+  let user = null;
+
+  if (type === 'address') {
+    user = await lookupByAddress(recipient);
+  } else if (type === 'username') {
+    user = await lookupByUsername(normaliseUsername(recipient));
+  } else if (type === 'email') {
+    user = await lookupByEmail(recipient.toLowerCase().trim());
+  }
+
+  if (!user) {
+    throw new Error(
+      `Recipient "${recipient}" is not registered on Zap-X. Private transfers require both parties to have a Zap-X account.`,
+    );
+  }
+
+  const tongoKey = await getTongoPublicKey(user.walletAddress);
+  if (!tongoKey) {
+    throw new Error(
+      `Recipient has not activated private transfers yet. Ask them to open Zap-X once to enable it.`,
+    );
+  }
+
+  return { recipientAddress: user.walletAddress, recipientEmail: user.email ?? undefined, tongoKey };
+}
+
+/**
+ * Record a confirmed private (confidential) transfer in the transactions table.
+ * The on-chain amount and recipient address are hidden; we store the
+ * human-readable values only in our DB (visible to the sender in their history).
+ */
+export async function recordPrivateTransfer(params: {
+  senderWallet: string;
+  recipient: string;
+  amount: string;
+  token: TokenSymbol;
+  fundTxHash?: string;
+  transferTxHash: string;
+  note?: string;
+}): Promise<{ success: boolean; txHash: string; message: string }> {
+  const sql = getDb();
+
+  // Resolve recipient email for notification (best-effort — don't block the response).
+  resolvePrivateRecipient(params.recipient)
+    .then(({ recipientEmail }) => {
+      if (!recipientEmail) return;
+      sendTransferConfirmation({
+        toEmail: recipientEmail,
+        senderAddress: params.senderWallet,
+        amount: params.amount,
+        token: params.token,
+        txHash: params.transferTxHash,
+      }).catch((err) =>
+        console.error('[EmailService] Failed to send private transfer notification:', err),
+      );
+    })
+    .catch(() => null);
+
+  await sql`
+    INSERT INTO transactions
+      (sender_wallet, recipient_wallet, recipient_identifier, amount, token, tx_hash, status, note)
+    VALUES (
+      ${params.senderWallet},
+      ${null},
+      ${params.recipient},
+      ${params.amount},
+      ${params.token},
+      ${params.transferTxHash},
+      ${'pending' satisfies TransactionStatus},
+      ${params.note ?? null}
+    )
+  `;
+
+  return {
+    success: true,
+    txHash: params.transferTxHash,
+    message: `Private transfer of ${params.amount} ${params.token} submitted. Amount and recipient are hidden on-chain.`,
   };
 }
 

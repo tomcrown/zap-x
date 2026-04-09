@@ -61,7 +61,7 @@ Supported tokens: ${SUPPORTED_TOKENS.join(", ")}
 Supported actions: ${SUPPORTED_ACTIONS.join(", ")}
 
 Action schemas:
-- send:    { type: "send",    amount: string, token: TokenSymbol, recipient: string (email, @username, or 0x address) }
+- send:    { type: "send",    amount: string, token: TokenSymbol, recipient: string (email, @username, or 0x address), private?: boolean }
 - swap:    { type: "swap",    amount: string, token: TokenSymbol, toToken: TokenSymbol }
 - save:    { type: "save",    amount: string, token: TokenSymbol }
 - invest:  { type: "invest",  amount: string, token: TokenSymbol }
@@ -87,6 +87,7 @@ Rules:
 12. "borrow X TOKEN" → borrow, default collateralToken="STRK" unless user specifies.
 13. "repay X TOKEN" → repay, default collateralToken="STRK".
 14. Return ONLY valid JSON. No markdown fences, no explanation text.
+15. If the command contains "privately", "private", "confidentially", or "anonymously" in relation to a send, set private: true on that send action. Only STRK, ETH, and USDC support private transfers.
 
 Response format:
 {
@@ -181,7 +182,11 @@ const LOCAL_REPAY_RE =
 function tryLocalParse(input: string): AIParseResult | null {
   let m: RegExpMatchArray | null;
 
-  m = input.match(LOCAL_SEND_RE);
+  // Detect "privately" modifier before any regex (strip it for matching, flag it)
+  const isPrivate = /\bprivately\b|\bprivate\b|\bconfidentially\b|\banonymously\b/i.test(input);
+  const normalised = input.replace(/\s*\b(?:privately|private|confidentially|anonymously)\b\s*/gi, ' ').replace(/\s+/g, ' ').trim();
+
+  m = normalised.match(LOCAL_SEND_RE);
   if (m) {
     return {
       actions: [
@@ -191,6 +196,7 @@ function tryLocalParse(input: string): AIParseResult | null {
           token: normaliseToken(m[2]),
           recipient: m[3],
           note: m[4],
+          ...(isPrivate ? { private: true } : {}),
         },
       ],
       original: input,

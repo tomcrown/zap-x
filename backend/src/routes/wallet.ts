@@ -11,7 +11,13 @@
 
 import { Router } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth.js';
-import { getOrCreateStarknetWallet, rawSignStarknet, registerUser } from '../services/walletService.js';
+import {
+  getOrCreateStarknetWallet,
+  rawSignStarknet,
+  registerUser,
+  getOrCreateTongoKey,
+  saveTongoPublicKey,
+} from '../services/walletService.js';
 
 const router = Router();
 
@@ -36,6 +42,11 @@ router.post('/starknet', requireAuth as any, async (req: AuthenticatedRequest, r
       privyWalletPublicKey: walletInfo.publicKey,
     }).catch(() => null);
 
+    // Eagerly generate (and persist) the Tongo key on every login.
+    // This ensures tongo_public_key_x/y are always populated before any
+    // private transfer is attempted — no round-trip from the frontend needed.
+    getOrCreateTongoKey(privyUserId).catch(() => null);
+
     res.json({
       walletId: walletInfo.id,
       publicKey: walletInfo.publicKey,
@@ -59,6 +70,35 @@ router.post('/sign', requireAuth as any, async (req: AuthenticatedRequest, res, 
 
     const signature = await rawSignStarknet(walletId, hash);
     res.json({ signature });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/wallet/tongo
+// Get (or generate) the user's Tongo private key for confidential transfers.
+// The frontend uses this to instantiate TongoConfidential and derive the public key.
+router.post('/tongo', requireAuth as any, async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const tongoKey = await getOrCreateTongoKey(req.user!.privyUserId);
+    res.json(tongoKey);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/wallet/tongo/pubkey
+// Register the user's Tongo public key (x, y) derived on the frontend.
+// Called once after first TongoConfidential instantiation so recipients can look it up.
+router.post('/tongo/pubkey', requireAuth as any, async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const { x, y } = req.body;
+    if (!x || !y) {
+      res.status(400).json({ error: 'x and y public key coordinates are required.' });
+      return;
+    }
+    await saveTongoPublicKey(req.user!.privyUserId, String(x), String(y));
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }

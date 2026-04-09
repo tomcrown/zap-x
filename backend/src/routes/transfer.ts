@@ -4,11 +4,15 @@ import {
   validate,
   prepareTransferSchema,
   confirmTransferSchema,
+  privateTransferPrepareSchema,
+  privateTransferConfirmSchema,
 } from '../middleware/validation.js';
 import {
   prepareTransfer,
   recordConfirmedTransfer,
   getTransactionHistory,
+  resolvePrivateRecipient,
+  recordPrivateTransfer,
 } from '../services/transferService.js';
 
 const router = Router();
@@ -40,6 +44,36 @@ router.get('/history', requireAuth as any, async (req: AuthenticatedRequest, res
   try {
     const txs = await getTransactionHistory(req.user!.walletAddress);
     res.json({ transactions: txs });
+  } catch (err) { next(err); }
+});
+
+// ─── Private (Confidential) Transfer ──────────────────────────────────────────
+
+// POST /api/transfer/private/prepare
+// Resolves the recipient and returns their Tongo public key for ZK proof generation.
+router.post('/private/prepare', requireAuth as any, validate(privateTransferPrepareSchema), async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const { recipient } = req.body;
+    const result = await resolvePrivateRecipient(recipient);
+    res.json({ recipientKey: result.tongoKey });
+  } catch (err: any) {
+    if (
+      err.message?.includes('not registered') ||
+      err.message?.includes('not activated')
+    ) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    next(err);
+  }
+});
+
+// POST /api/transfer/private/confirm
+// Records the confidential transfer in the DB after the on-chain txs succeed.
+router.post('/private/confirm', requireAuth as any, validate(privateTransferConfirmSchema), async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const response = await recordPrivateTransfer(req.body);
+    res.json(response);
   } catch (err) { next(err); }
 });
 
