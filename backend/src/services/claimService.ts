@@ -2,12 +2,17 @@
  * ClaimService
  */
 
-import { Account, RpcProvider, Signer, uint256, CallData } from 'starknet';
-import { config } from '../config/index.js';
-import getDb from '../db/database.js';
-import { DbClaimLink, ClaimLinkDetails, ClaimStatus, TokenSymbol } from '../models/types.js';
-import { generateClaimToken, isValidStarknetAddress } from '../utils/crypto.js';
-import { claimExpiry, TOKEN_ADDRESSES, parseAmount } from '../utils/helpers.js';
+import { Account, RpcProvider, Signer, uint256, CallData } from "starknet";
+import { config } from "../config/index.js";
+import getDb from "../db/database.js";
+import {
+  DbClaimLink,
+  ClaimLinkDetails,
+  ClaimStatus,
+  TokenSymbol,
+} from "../models/types.js";
+import { generateClaimToken, isValidStarknetAddress } from "../utils/crypto.js";
+import { claimExpiry, TOKEN_ADDRESSES, parseAmount } from "../utils/helpers.js";
 
 // ─── Create Claim Link ─────────────────────────────────────────────────────────
 
@@ -44,19 +49,25 @@ export async function createClaimLink(params: {
 
 // ─── Get Claim Link ────────────────────────────────────────────────────────────
 
-export async function getClaimLink(token: string): Promise<ClaimLinkDetails | null> {
+export async function getClaimLink(
+  token: string,
+): Promise<ClaimLinkDetails | null> {
   const sql = getDb();
-  const [row] = await sql<DbClaimLink[]>`SELECT * FROM claim_links WHERE token = ${token}`;
+  const [row] = await sql<
+    DbClaimLink[]
+  >`SELECT * FROM claim_links WHERE token = ${token}`;
   return row ? rowToDetails(row) : null;
 }
 
-export async function getClaimLinksByWallet(senderWallet: string): Promise<ClaimLinkDetails[]> {
+export async function getClaimLinksByWallet(
+  senderWallet: string,
+): Promise<ClaimLinkDetails[]> {
   const sql = getDb();
-  const padded = '0x' + BigInt(senderWallet).toString(16).padStart(64, '0');
-  const unpadded = '0x' + BigInt(senderWallet).toString(16);
+  const padded = "0x" + BigInt(senderWallet).toString(16).padStart(64, "0");
+  const unpadded = "0x" + BigInt(senderWallet).toString(16);
   const rows = await sql<DbClaimLink[]>`
     SELECT * FROM claim_links
-    WHERE sender_wallet IN (${padded}, ${unpadded})
+    WHERE sender_wallet IN ${sql([padded, unpadded])}
     ORDER BY created_at DESC
   `;
   return rows.map(rowToDetails);
@@ -71,21 +82,28 @@ export async function redeemClaimLink(
   const sql = getDb();
 
   if (!isValidStarknetAddress(recipientWallet)) {
-    throw new Error('Invalid recipient wallet address.');
+    throw new Error("Invalid recipient wallet address.");
   }
 
-  const [row] = await sql<DbClaimLink[]>`SELECT * FROM claim_links WHERE token = ${token}`;
+  const [row] = await sql<
+    DbClaimLink[]
+  >`SELECT * FROM claim_links WHERE token = ${token}`;
 
-  if (!row) throw new Error('Claim link not found.');
-  if (row.status !== 'pending') throw new Error(`Claim link is already ${row.status}.`);
+  if (!row) throw new Error("Claim link not found.");
+  if (row.status !== "pending")
+    throw new Error(`Claim link is already ${row.status}.`);
 
   const now = new Date();
   if (new Date(row.expires_at) < now) {
     await sql`UPDATE claim_links SET status = 'expired' WHERE token = ${token}`;
-    throw new Error('This claim link has expired.');
+    throw new Error("This claim link has expired.");
   }
 
-  const txHash = await releaseEscrow(recipientWallet, row.amount, row.token_type as TokenSymbol);
+  const txHash = await releaseEscrow(
+    recipientWallet,
+    row.amount,
+    row.token_type as TokenSymbol,
+  );
 
   await sql`
     UPDATE claim_links
@@ -105,7 +123,7 @@ export async function redeemClaimLink(
       ${row.token_type},
       ${txHash},
       'confirmed',
-      ${'Claimed via link'}
+      ${"Claimed via link"}
     )
   `;
 
@@ -123,17 +141,25 @@ export async function redeemClaimLink(
 
 // ─── Cancel Claim Link ─────────────────────────────────────────────────────────
 
-export async function cancelClaimLink(token: string, senderWallet: string): Promise<{ txHash: string }> {
+export async function cancelClaimLink(
+  token: string,
+  senderWallet: string,
+): Promise<{ txHash: string }> {
   const sql = getDb();
 
   const [row] = await sql<DbClaimLink[]>`
     SELECT * FROM claim_links WHERE token = ${token} AND sender_wallet = ${senderWallet}
   `;
 
-  if (!row) throw new Error('Claim link not found or not owned by you.');
-  if (row.status !== 'pending') throw new Error(`Cannot cancel a ${row.status} claim.`);
+  if (!row) throw new Error("Claim link not found or not owned by you.");
+  if (row.status !== "pending")
+    throw new Error(`Cannot cancel a ${row.status} claim.`);
 
-  const txHash = await releaseEscrow(senderWallet, row.amount, row.token_type as TokenSymbol);
+  const txHash = await releaseEscrow(
+    senderWallet,
+    row.amount,
+    row.token_type as TokenSymbol,
+  );
 
   await sql`
     UPDATE claim_links
@@ -152,8 +178,10 @@ async function releaseEscrow(
   token: TokenSymbol,
 ): Promise<string> {
   if (!config.escrow.privateKey || !config.escrow.walletAddress) {
-    console.warn('[ClaimService] Escrow keys not configured — returning mock tx hash.');
-    return '0x' + '0'.repeat(63) + '1';
+    console.warn(
+      "[ClaimService] Escrow keys not configured — returning mock tx hash.",
+    );
+    return "0x" + "0".repeat(63) + "1";
   }
 
   const provider = new RpcProvider({ nodeUrl: config.starknet.rpcUrl });
@@ -170,7 +198,7 @@ async function releaseEscrow(
 
   const call = {
     contractAddress: tokenAddress,
-    entrypoint: 'transfer',
+    entrypoint: "transfer",
     calldata: CallData.compile({
       recipient: recipientAddress,
       amount: uint256Amount,

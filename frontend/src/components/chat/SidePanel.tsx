@@ -119,17 +119,19 @@ function ClaimRow({ claim }: { claim: ClaimLink }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [confirming, setConfirming] = useState(false);
+  const [cancelled, setCancelled] = useState(false); // ADD THIS
 
   const cancelMutation = useMutation({
     mutationFn: () => claimApi.cancel(claim.token),
     onSuccess: (result: any) => {
+      setCancelled(true); // ADD THIS
       toast({
         type: "success",
         title: "Claim cancelled",
         message: "Funds refunded to your wallet.",
         txHash: result?.txHash,
       });
-      queryClient.invalidateQueries({ queryKey: ["claims"] });
+      queryClient.invalidateQueries({ queryKey: ["claim-links"] });
     },
     onError: (e: Error) => {
       toast({ type: "error", title: "Cancel failed", message: e.message });
@@ -137,7 +139,8 @@ function ClaimRow({ claim }: { claim: ClaimLink }) {
     onSettled: () => setConfirming(false),
   });
 
-  const isPending = claim.status === "pending";
+  const isPending = claim.status === "pending" && !cancelled; // CHANGE THIS
+
   const recipient = claim.recipientEmail ?? claim.recipientUsername ?? "—";
   const shortRecipient =
     recipient.length > 18 ? `${recipient.slice(0, 14)}…` : recipient;
@@ -319,7 +322,7 @@ export function SidePanel({ isOpen, onClose }: Props) {
   });
 
   const { data: claims } = useQuery({
-    queryKey: ["claims"],
+    queryKey: ["claim-links"],
     queryFn: claimApi.list,
     enabled: !!walletAddress,
     refetchInterval: 30_000,
@@ -370,10 +373,10 @@ export function SidePanel({ isOpen, onClose }: Props) {
 
   // Show pending claims first, then most recent non-pending (max 4 total)
   const pendingClaims = (claims ?? []).filter((c) => c.status === "pending");
-  const recentClaims = (claims ?? [])
+  const nonPendingClaims = (claims ?? [])
     .filter((c) => c.status !== "pending")
-    .slice(0, Math.max(0, 4 - pendingClaims.length));
-  const displayClaims = [...pendingClaims, ...recentClaims];
+    .slice(0, 5);
+  const displayClaims = [...pendingClaims, ...nonPendingClaims];
 
   return (
     <>

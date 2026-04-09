@@ -46,7 +46,8 @@ export function SendForm({ prefill, onSuccess }: Props) {
   const [step, setStep] = useState<"form" | "confirming" | "done">("form");
   const [txHash, setTxHash] = useState("");
   const [claimLink, setClaimLink] = useState("");
-  const [privateStep, setPrivateStep] = useState<PrivateTransferStep>("initializing");
+  const [privateStep, setPrivateStep] =
+    useState<PrivateTransferStep>("initializing");
   const [fundTxHash, setFundTxHash] = useState<string | undefined>();
   const [privateError, setPrivateError] = useState<string | undefined>();
 
@@ -58,7 +59,8 @@ export function SendForm({ prefill, onSuccess }: Props) {
   const sendMutation = useMutation({
     mutationFn: async () => {
       if (!walletAddress) throw new Error("Wallet not connected.");
-      if (!amount || parseFloat(amount) <= 0) throw new Error("Enter a valid amount.");
+      if (!amount || parseFloat(amount) <= 0)
+        throw new Error("Enter a valid amount.");
       if (!recipient.trim()) throw new Error("Enter a recipient.");
 
       setStep("confirming");
@@ -139,7 +141,9 @@ export function SendForm({ prefill, onSuccess }: Props) {
       setStep("done");
       toast({
         type: "success",
-        title: data.isPrivate ? "Private transfer sent!" : "Transfer submitted!",
+        title: data.isPrivate
+          ? "Private transfer sent!"
+          : "Transfer submitted!",
         message: data.isPrivate
           ? "Amount and recipient are hidden on-chain."
           : claimLink
@@ -148,6 +152,8 @@ export function SendForm({ prefill, onSuccess }: Props) {
         txHash,
       });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["claim-links"] }); // ADD THIS
+
       onSuccess?.();
     },
     onError: (err: Error) => {
@@ -163,8 +169,18 @@ export function SendForm({ prefill, onSuccess }: Props) {
     return (
       <div className="text-center py-8 animate-fade-in">
         <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/20 flex items-center justify-center">
-          <svg className="w-8 h-8 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          <svg
+            className="w-8 h-8 text-green-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M5 13l4 4L19 7"
+            />
           </svg>
         </div>
         <h3 className="text-xl font-bold text-white mb-2">
@@ -193,7 +209,9 @@ export function SendForm({ prefill, onSuccess }: Props) {
             <p className="text-xs font-semibold text-brand-400 mb-2">
               Share this claim link with the recipient
             </p>
-            <p className="text-xs font-mono text-slate-300 break-all mb-3">{claimLink}</p>
+            <p className="text-xs font-mono text-slate-300 break-all mb-3">
+              {claimLink}
+            </p>
             <button
               onClick={() => navigator.clipboard.writeText(claimLink)}
               className="w-full py-2 rounded-lg bg-brand-600/20 border border-brand-500/30 text-xs text-brand-400 hover:bg-brand-600/30 transition-colors font-semibold"
@@ -250,7 +268,9 @@ export function SendForm({ prefill, onSuccess }: Props) {
       {/* Amount + Token */}
       <div className="flex gap-3">
         <div className="flex-1">
-          <label className="block text-sm font-medium text-slate-300 mb-1.5">Amount</label>
+          <label className="block text-sm font-medium text-slate-300 mb-1.5">
+            Amount
+          </label>
           <div className="relative">
             <input
               type="number"
@@ -320,8 +340,18 @@ export function SendForm({ prefill, onSuccess }: Props) {
           </div>
           <div>
             <p className="text-sm font-medium text-slate-200 flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              <svg
+                className="w-3.5 h-3.5 text-purple-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                />
               </svg>
               Send Privately
             </p>
@@ -330,15 +360,19 @@ export function SendForm({ prefill, onSuccess }: Props) {
             </p>
             {sendPrivately && (
               <p className="text-xs text-purple-400/80 mt-1 font-mono">
-                Recipient must have a Zap-X account with private transfers activated
+                Recipient must have a Zap-X account with private transfers
+                activated
               </p>
             )}
           </div>
         </label>
       ) : (
-        token !== "STRK" && token !== "ETH" && token !== "USDC" && (
+        token !== "STRK" &&
+        token !== "ETH" &&
+        token !== "USDC" && (
           <p className="text-xs text-zinc-600 font-mono px-1">
-            Private transfers available for {PRIVATE_TRANSFER_TOKENS.join(", ")} only
+            Private transfers available for {PRIVATE_TRANSFER_TOKENS.join(", ")}{" "}
+            only
           </p>
         )
       )}
@@ -356,7 +390,9 @@ export function SendForm({ prefill, onSuccess }: Props) {
           <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
         </div>
         <div>
-          <p className="text-sm font-medium text-slate-200">Gasless Transaction</p>
+          <p className="text-sm font-medium text-slate-200">
+            Gasless Transaction
+          </p>
           <p className="text-xs text-slate-500">
             Powered by AVNU Paymaster — no ETH/STRK needed for gas
           </p>
@@ -371,12 +407,32 @@ export function SendForm({ prefill, onSuccess }: Props) {
         size="lg"
         icon={
           sendPrivately ? (
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+              />
             </svg>
           ) : (
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+              />
             </svg>
           )
         }
