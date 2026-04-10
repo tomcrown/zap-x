@@ -212,15 +212,16 @@ export function DocsPage() {
               <SectionLabel>Overview</SectionLabel>
               <SectionTitle>What is Zap-X?</SectionTitle>
               <p className="text-zinc-500 text-sm leading-relaxed mb-3">
-                Zap-X is a non-custodial crypto transfer app built on Starknet.
-                Send STRK to anyone — by wallet address or email — with no gas
-                fees, no seed phrases, and no crypto knowledge required.
+                Zap-X is a non-custodial DeFi app built on Starknet, controlled
+                entirely through an AI chat interface. Type what you want —
+                send, swap, save, or DCA — and it happens on-chain. No menus, no
+                forms, no crypto knowledge required.
               </p>
               <p className="text-zinc-500 text-sm leading-relaxed">
                 For recipients without a wallet, Zap-X creates one automatically
                 and emails them a claim link. They click it, sign in with
-                Google, and a Starknet wallet is created for them. No setup, no
-                extensions.
+                Google, and a Starknet wallet is created for them instantly. No
+                setup, no seed phrases.
               </p>
             </section>
 
@@ -234,12 +235,16 @@ export function DocsPage() {
                 headers={["Feature", "Description"]}
                 rows={[
                   [
+                    "AI chat interface",
+                    "Every action — send, swap, save, or DCA — through a single chat UI",
+                  ],
+                  [
                     "Send to anyone",
                     "Wallet address, @username, or email address",
                   ],
                   [
                     "Private transfers",
-                    "On-chain confidential via Tongo/ElGamal encryption",
+                    "On-chain confidential via Tongo — ElGamal encryption + ZK proofs",
                   ],
                   [
                     "Auto-create wallets",
@@ -250,11 +255,9 @@ export function DocsPage() {
                     "Unregistered recipients get an email claim link",
                   ],
                   ["Gasless", "All fees sponsored by AVNU Paymaster"],
-                  [
-                    "AI natural language",
-                    "Google Gemini parses plain-English commands",
-                  ],
-                  ["Staking", "Stake STRK into Starknet native staking pools"],
+                  ["Swap", "Swap between supported tokens instantly"],
+                  ["DCA", "Automate recurring token buys on a schedule"],
+                  ["Save", "Save STRK into vesu"],
                   ["Transaction history", "Full history with status tracking"],
                   [
                     "Email notifications",
@@ -290,7 +293,7 @@ export function DocsPage() {
                 <Step
                   num="02"
                   title="Claim email sent"
-                  desc="A unique link is emailed: zapx.vercel.app/claim/<token>"
+                  desc="A unique link is emailed: zap-x-five.vercel.app/claim/<token>"
                 />
                 <Step
                   num="03"
@@ -393,6 +396,7 @@ export function DocsPage() {
                     "On-chain confidential/private transfers",
                   ],
                   ["Google Gemini", "Natural language AI command parsing"],
+
                   [
                     "Nodemailer",
                     "Transactional emails (claims, confirmations)",
@@ -408,6 +412,13 @@ export function DocsPage() {
                 ]}
               />
             </section>
+            <SectionTitle>Swap & DCA</SectionTitle>
+            <p className="text-zinc-500 text-sm leading-relaxed mb-2">
+              Users can swap between supported tokens instantly or set up
+              automated recurring buys (DCA) — all through the same chat
+              interface. Type "swap USDC to STRK" or "DCA 5 STRK daily" and the
+              AI handles the rest via the Starkzap SDK.
+            </p>
 
             <Divider />
 
