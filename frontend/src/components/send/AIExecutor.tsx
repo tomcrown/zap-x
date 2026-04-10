@@ -572,7 +572,7 @@ function HelpWidget({ onFill }: { onFill: (text: string) => void }) {
 }
 
 function PortfolioBar() {
-  const { walletAddress, balances, balancesLoading, refreshBalances } =
+  const { walletAddress, balances, balancesLoading, refreshBalances, isWalletConnecting } =
     useWallet();
   const [copied, setCopied] = useState(false);
 
@@ -612,7 +612,7 @@ function PortfolioBar() {
       </div>
 
       <div className="flex items-center justify-center gap-3">
-        {walletAddress && (
+        {walletAddress ? (
           <button
             onClick={copyAddress}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface border border-surface-border hover:border-zinc-700 transition-colors group"
@@ -634,6 +634,25 @@ function PortfolioBar() {
               {copied ? "copied ✓" : shortAddr}
             </span>
           </button>
+        ) : (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface border border-surface-border">
+            <svg
+              className="w-3.5 h-3.5 text-accent animate-spin"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            <span className="font-mono text-xs text-zinc-500">
+              {isWalletConnecting ? "deploying wallet…" : "setting up wallet…"}
+            </span>
+          </div>
         )}
         <button
           onClick={refreshBalances}
