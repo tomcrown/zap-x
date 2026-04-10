@@ -97,6 +97,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           const info = await walletApi.ensureStarknetWallet();
           if (info?.address) {
             setWalletAddress(info.address);
+            setIsSdkReady(true);
             localStorage.setItem(cacheKey, info.address);
           }
         } catch {}

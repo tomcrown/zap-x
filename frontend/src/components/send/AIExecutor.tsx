@@ -1100,7 +1100,7 @@ export function AIExecutor() {
           throw new Error(`Unknown action: ${action.type}`);
       }
 
-      setTimeout(() => refreshBalances(), 2000);
+      setTimeout(() => refreshBalances(), 3000);
 
       setMessages((prev) =>
         prev.map((m) => {

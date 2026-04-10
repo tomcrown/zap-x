@@ -150,7 +150,7 @@ export function SendForm({ prefill, onSuccess }: Props) {
       });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["claim-links"] });
-      setTimeout(() => refreshBalances(), 2000);
+      setTimeout(() => refreshBalances(), 3000);
       onSuccess?.();
     },
     onError: (err: Error) => {
