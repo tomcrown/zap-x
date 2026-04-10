@@ -225,58 +225,11 @@ cd backend
 cp .env.example .env
 ```
 
-Edit `backend/.env`:
-
-```env
-PORT=3001
-DATABASE_URL=postgresql://user:password@localhost:5432/zapx
-
-# Privy
-PRIVY_APP_ID=your-privy-app-id
-PRIVY_APP_SECRET=your-privy-app-secret
-PRIVY_WALLET_PUBLIC_KEY=your-privy-server-wallet-public-key
-PRIVY_WALLET_PRIVATE_KEY=your-privy-server-wallet-private-key
-
-# Starknet
-STARKNET_NETWORK=mainnet
-STARKNET_RPC_URL=https://starknet-mainnet.public.blastapi.io/rpc/v0_7
-
-# Escrow wallet (funded with STRK for escrow releases)
-ESCROW_WALLET_ADDRESS=0x...
-ESCROW_PRIVATE_KEY=0x...
-
-# AVNU Paymaster
-AVNU_PAYMASTER_URL=https://paymaster.avnu.fi
-AVNU_API_KEY=your-avnu-api-key
-
-# Google Gemini
-GEMINI_API_KEY=your-gemini-api-key
-
-# Email (SMTP)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=you@gmail.com
-SMTP_PASS=your-gmail-app-password
-SMTP_FROM=Zap-X <you@gmail.com>
-
-# Frontend URL (for claim links in emails)
-FRONTEND_URL=http://localhost:5173
-```
-
 ### 3. Configure the frontend
 
 ```bash
 cd frontend
 cp .env.example .env
-```
-
-Edit `frontend/.env`:
-
-```env
-VITE_API_URL=http://localhost:3001
-VITE_PRIVY_APP_ID=your-privy-app-id
-VITE_STARKNET_NETWORK=mainnet
-VITE_AVNU_API_KEY=your-avnu-api-key
 ```
 
 ### 4. Run database migrations
