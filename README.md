@@ -1,24 +1,28 @@
-# Zap-X — Instant Token Transfers on Starknet
+# Zap-X — AI-Powered DeFi on Starknet
 
-Zap-X is a non-custodial crypto transfer app built on Starknet. Send STRK to anyone — by wallet address, or email — with no gas fees, no seed phrases, and no crypto knowledge required. For recipients without a wallet, Zap-X creates one automatically and emails them a claim link.
+Zap-X is a non-custodial DeFi app built on Starknet, controlled entirely through an AI chat interface. Type what you want — send, swap, stake, or DCA — and it happens on-chain. No menus, no forms, no crypto knowledge required.
 
-Live at: [zapx.vercel.app](https://zapx.vercel.app)
+Send STRK to anyone by wallet address or email. For recipients without a wallet, Zap-X creates one automatically and emails them a claim link. They click it, sign in, and they're in — no setup, no seed phrases.
+
+Live at: [zap-x-five.vercel.app](https://zap-x-five.vercel.app)
 
 ---
 
 ## Features
 
-| Feature              | Description                                                                                  |
-| -------------------- | -------------------------------------------------------------------------------------------- |
-| Send to anyone       | Send STRK to a wallet address, @username, or email address                                   |
-| Private transfers    | On-chain confidential transfers — amount and recipient hidden using Tongo/ElGamal encryption |
-| Auto-create wallets  | New recipients get a Privy-managed Starknet wallet created automatically                     |
-| Claim links          | Unregistered recipients get an email with a claim link to collect funds                      |
-| Gasless transactions | All transactions sponsored by AVNU Paymaster — zero gas cost for users                       |
-| AI natural language  | Type "send 5 STRK to alice@example.com" and Gemini parses the intent                         |
-| Staking              | Stake STRK into Starknet staking pools, view live yield and positions                        |
-| Transaction history  | Full history of sent/received transfers with status tracking                                 |
-| Email notifications  | Both sender and recipient get email confirmations on every transfer                          |
+| Feature              | Description                                                                                   |
+| -------------------- | --------------------------------------------------------------------------------------------- | --- |
+| AI chat interface    | Every action — send, swap, stake, DCA — is executed through a natural language chat UI        |
+| Send to anyone       | Send tokens to a wallet address, @username, or email address                                  |
+| Auto-create wallets  | New recipients get a Privy-managed Starknet wallet created automatically                      |
+| Claim links          | Unregistered recipients get an email with a claim link to collect funds                       |
+| Gasless transactions | All transactions sponsored by AVNU Paymaster — zero gas cost for users                        |
+| Private transfers    | On-chain confidential transfers — amount and recipient hidden using Tongo/ElGamal + ZK proofs |
+| Swap                 | Swap between supported tokens instantly                                                       |
+| DCA                  | Automate recurring token buys on a schedule                                                   |
+| Staking              | Stake STRK into Starknet native staking pools, view live yield and positions                  |
+| Transaction history  | Full history of sent/received transfers with status tracking                                  |
+| Email notifications  | Both sender and recipient get email confirmations on every transfer                           |     |
 
 ---
 
@@ -41,7 +45,7 @@ When a recipient doesn't have a Zap-X account:
 
 1. Funds are sent to the escrow wallet
 2. A unique claim token is generated and stored in the database
-3. The recipient receives an email with a link: `zapx.vercel.app/claim/<token>`
+3. The recipient receives an email with a link: `zap-x-five.vercel.app/claim/<token>`
 4. They click the link, sign in with Privy (their email), and a wallet is auto-created
 5. The backend releases escrow funds to their new wallet via a signed transfer
 
@@ -49,14 +53,19 @@ When a recipient doesn't have a Zap-X account:
 
 Every on-chain transaction is submitted through AVNU's paymaster. Users sign with their Privy wallet but never hold STRK for gas. The app sponsors all fees.
 
-### AI Command Parsing
+### AI Chat Interface
 
-The send form includes a natural language input bar. Users can type things like:
+Zap-X has no forms and no navigation menus. Every action happens through a single chat interface powered by Google Gemini. Users type what they want, the AI parses the intent and prepares the transaction, and the user confirms.
+
+Examples:
 
 - "Send 10 STRK to @tomcrown"
-- "Transfer 0.5 STRK to alice@example.com with note birthday gift"
+- "Transfer 0.5 STRK to alice@example.com"
+- "Swap USDC to STRK"
+- "DCA 5 STRK daily"
+- "Stake 20 STRK"
 
-Google Gemini parses the intent and pre-fills the form fields automatically.
+Gemini parses the intent and pre-fills all transaction parameters automatically.
 
 ### Private Transfers (Tongo Confidential)
 
@@ -66,6 +75,14 @@ For maximum privacy, users can send confidential transfers where the amount and 
 2. The sender's Tongo balance is funded from their public STRK balance
 3. A confidential transfer is submitted — only the sender and recipient can decrypt the amount
 4. The recipient can decrypt and withdraw their balance at any time
+
+### Swap
+
+Users can swap between supported tokens instantly through the chat interface. Type "swap X to Y" and the AI prepares the transaction via the Starkzap SDK.
+
+### DCA (Dollar Cost Averaging)
+
+Users can automate recurring token buys on a schedule. Type "DCA 5 STRK daily" and Zap-X sets up automated purchases at the specified interval.
 
 ### Staking
 
@@ -80,7 +97,7 @@ Users can stake STRK directly into Starknet's native staking protocol. The dashb
 - React 18 + TypeScript + Vite
 - TailwindCSS (dark theme, custom design system)
 - Privy React Auth (`@privy-io/react-auth`)
-- Starkzap SDK v2 (Starknet transfers, staking, Tongo confidential)
+- Starkzap SDK v2 — token transfers, swaps, DCA, lending, batched transactions, Tongo confidential
 - React Router v6
 - Axios for API calls
 
