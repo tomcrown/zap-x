@@ -30,7 +30,7 @@ interface Props {
 }
 
 export function SendForm({ prefill, onSuccess }: Props) {
-  const { walletAddress, balances, refreshBalances } = useWallet();
+  const { walletAddress, balances, refreshBalancesAfterTx } = useWallet();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -150,7 +150,7 @@ export function SendForm({ prefill, onSuccess }: Props) {
       });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["claim-links"] });
-      setTimeout(() => refreshBalances(), 3000);
+      refreshBalancesAfterTx();
       onSuccess?.();
     },
     onError: (err: Error) => {

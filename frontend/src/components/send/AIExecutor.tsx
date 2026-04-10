@@ -828,7 +828,7 @@ function ResultBubble({ msg }: { msg: Message }) {
 }
 
 export function AIExecutor() {
-  const { walletAddress, balances, refreshBalances, profile } = useWallet();
+  const { walletAddress, balances, refreshBalancesAfterTx, profile } = useWallet();
   const queryClient = useQueryClient();
   const greeting = profile?.username ? `@${profile.username}` : "there";
 
@@ -1100,7 +1100,7 @@ export function AIExecutor() {
           throw new Error(`Unknown action: ${action.type}`);
       }
 
-      setTimeout(() => refreshBalances(), 3000);
+      refreshBalancesAfterTx();
 
       setMessages((prev) =>
         prev.map((m) => {

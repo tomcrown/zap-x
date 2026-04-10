@@ -29,6 +29,7 @@ interface WalletContextValue {
 
   balances: Record<TokenSymbol, string>;
   refreshBalances: () => Promise<void>;
+  refreshBalancesAfterTx: () => void;
   balancesLoading: boolean;
 
   login: () => void;
@@ -138,6 +139,31 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, [authenticated, walletAddress]);
 
+  // After a transaction, poll until the balance actually changes (max 10 attempts, 2s apart).
+  const refreshBalancesAfterTx = useCallback(() => {
+    if (!authenticated || !walletAddress) return;
+    let attempts = 0;
+    const snapshot = balances;
+
+    const poll = async () => {
+      attempts++;
+      try {
+        const bal = await getAllBalances();
+        const changed = (Object.keys(bal) as TokenSymbol[]).some(
+          (t) => bal[t] !== snapshot[t],
+        );
+        setBalances(bal);
+        if (!changed && attempts < 10) {
+          setTimeout(poll, 2000);
+        }
+      } catch {
+        if (attempts < 10) setTimeout(poll, 2000);
+      }
+    };
+
+    setTimeout(poll, 1500);
+  }, [authenticated, walletAddress, balances]);
+
   useEffect(() => {
     if (authenticated && walletAddress) {
       refreshProfile();
@@ -152,9 +178,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
       getOrInitTongoConfidential("STRK").catch(() => {});
 
-      // Poll balances every 30 seconds so they stay fresh without manual refresh.
-      const interval = setInterval(() => refreshBalances(), 10_000);
-      return () => clearInterval(interval);
     } else if (!authenticated) {
       setBalances({} as Record<TokenSymbol, string>);
     }
@@ -180,6 +203,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         refreshProfile,
         balances,
         refreshBalances,
+        refreshBalancesAfterTx,
         balancesLoading,
         login,
         logout: handleLogout,
