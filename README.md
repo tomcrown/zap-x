@@ -7,22 +7,21 @@ Send STRK to anyone by wallet address or email. For recipients without a wallet,
 Live at: [zap-x-five.vercel.app](https://zap-x-five.vercel.app)
 
 ---
-
 ## Features
 
-| Feature              | Description                                                                                   |
-| -------------------- | --------------------------------------------------------------------------------------------- | --- |
-| AI chat interface    | Every action — send, swap, stake, DCA — is executed through a natural language chat UI        |
-| Send to anyone       | Send tokens to a wallet address, @username, or email address                                  |
-| Auto-create wallets  | New recipients get a Privy-managed Starknet wallet created automatically                      |
-| Claim links          | Unregistered recipients get an email with a claim link to collect funds                       |
-| Gasless transactions | All transactions sponsored by AVNU Paymaster — zero gas cost for users                        |
-| Private transfers    | On-chain confidential transfers — amount and recipient hidden using Tongo/ElGamal + ZK proofs |
-| Swap                 | Swap between supported tokens instantly                                                       |
-| DCA                  | Automate recurring token buys on a schedule                                                   |
-| Staking              | Stake STRK into Starknet native staking pools, view live yield and positions                  |
-| Transaction history  | Full history of sent/received transfers with status tracking                                  |
-| Email notifications  | Both sender and recipient get email confirmations on every transfer                           |     |
+| Feature              | Description                                                                                     |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| AI chat interface    | Every action — send, swap, stake, DCA — is executed through a natural language chat UI          |
+| Send to anyone       | Send tokens to a wallet address, @username, or email address                                    |
+| Auto-create wallets  | New recipients get a Privy-managed Starknet wallet created automatically                        |
+| Claim links          | Unregistered recipients get an email with a claim link to collect funds                         |
+| Gasless transactions | All transactions sponsored by AVNU Paymaster — zero gas cost for users                          |
+| Private transfers    | On-chain confidential transfers — amount and recipient hidden using Tongo / ElGamal + ZK proofs |
+| Swap                 | Swap between supported tokens instantly                                                         |
+| DCA                  | Automate recurring token buys on a schedule                                                     |
+| Staking              | Stake STRK into Starknet native staking pools, view live yield and positions                    |
+| Transaction history  | Full history of sent/received transfers with status tracking                                    |
+| Email notifications  | Both sender and recipient get email confirmations on every transfer                             |
 
 ---
 
