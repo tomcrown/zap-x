@@ -1,11 +1,3 @@
-/**
- * AIExecutor — the entire product UI.
- * Chat interface that parses natural language, enriches actions via backend,
- * and executes them on-chain through the Starkzap SDK.
- *
- * Transaction results appear as chat messages — not toasts.
- */
-
 import { useState, useRef, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -61,8 +53,6 @@ interface Message {
   resultLabel?: string;
   data?: ChatData;
 }
-
-// ─── Quick Commands ────────────────────────────────────────────────────────────
 
 const QUICK_COMMANDS = [
   {
@@ -192,8 +182,6 @@ function nextId() {
   return ++_msgId;
 }
 
-// ─── Helpers ───────────────────────────────────────────────────────────────────
-
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const s = Math.floor(diff / 1000);
@@ -264,8 +252,6 @@ const KIND_META: Record<
     glyph: "⇌",
   },
 };
-
-// ─── History Widget ────────────────────────────────────────────────────────────
 
 function HistoryWidget({ items }: { items: ActivityItem[] }) {
   const [expanded, setExpanded] = useState<number | null>(null);
@@ -416,8 +402,6 @@ function HistoryWidget({ items }: { items: ActivityItem[] }) {
     </div>
   );
 }
-
-// ─── Help Widget ───────────────────────────────────────────────────────────────
 
 const HELP_COMMANDS = [
   {
@@ -587,8 +571,6 @@ function HelpWidget({ onFill }: { onFill: (text: string) => void }) {
   );
 }
 
-// ─── Portfolio Bar ─────────────────────────────────────────────────────────────
-
 function PortfolioBar() {
   const { walletAddress, balances, balancesLoading, refreshBalances } =
     useWallet();
@@ -677,8 +659,6 @@ function PortfolioBar() {
   );
 }
 
-// ─── Typing Indicator ──────────────────────────────────────────────────────────
-
 function TypingIndicator() {
   return (
     <div className="flex gap-3 justify-start animate-fade-in">
@@ -714,8 +694,6 @@ function TypingIndicator() {
     </div>
   );
 }
-
-// ─── Result Bubble ─────────────────────────────────────────────────────────────
 
 function ResultBubble({ msg }: { msg: Message }) {
   const isSuccess = msg.role === "result-success";
@@ -830,8 +808,6 @@ function ResultBubble({ msg }: { msg: Message }) {
   );
 }
 
-// ─── Main Component ────────────────────────────────────────────────────────────
-
 export function AIExecutor() {
   const { walletAddress, balances, refreshBalances, profile } = useWallet();
   const queryClient = useQueryClient();
@@ -900,12 +876,10 @@ export function AIExecutor() {
     }
   };
 
-  // Fill input and focus (for HelpWidget taps)
   const handleFill = (text: string) => {
     setInput(text);
     setTimeout(() => {
       inputRef.current?.focus();
-      // Move cursor to end
       const el = inputRef.current;
       if (el) el.setSelectionRange(el.value.length, el.value.length);
     }, 30);
@@ -926,7 +900,6 @@ export function AIExecutor() {
       switch (action.type) {
         case "send": {
           if (action.private && isPrivateTransferSupported(action.token)) {
-            // ── Private (confidential) transfer ──────────────────────────
             const prep = await privateTransferApi.prepare(action.recipient!);
             const result = await executePrivateTransfer({
               recipientKey: prep.recipientKey,
@@ -945,7 +918,6 @@ export function AIExecutor() {
             });
             resultText = `${action.amount} ${action.token} sent privately to ${action.recipient} — amount & recipient hidden on-chain`;
           } else {
-            // ── Normal transfer ───────────────────────────────────────────
             const prep = await transferApi.prepare({
               senderWallet: walletAddress,
               recipient: action.recipient!,
@@ -1292,8 +1264,6 @@ export function AIExecutor() {
   );
 }
 
-// ─── Chat Bubble ───────────────────────────────────────────────────────────────
-
 function ChatBubble({
   msg,
   balances,
@@ -1389,8 +1359,6 @@ function ChatBubble({
     </div>
   );
 }
-
-// ─── Action Card ───────────────────────────────────────────────────────────────
 
 function ActionCard({
   action,

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useWallet } from "../contexts/WalletContext.js";
 
-// ── Scroll reveal hook ────────────────────────────────────────────────────────
 function useScrollReveal() {
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -19,7 +18,6 @@ function useScrollReveal() {
   }, []);
 }
 
-// ── Animated node background ──────────────────────────────────────────────────
 function NodeBackground() {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none select-none">
@@ -106,8 +104,6 @@ function NodeBackground() {
     </div>
   );
 }
-
-// ── Data ──────────────────────────────────────────────────────────────────────
 
 const EXAMPLES = [
   '"Send 5 STRK to tony@gmail.com"',
@@ -228,8 +224,6 @@ const TOKENS = [
   { symbol: "ETH", color: "#627eea" },
   { symbol: "BTC", color: "#f7931a" },
 ];
-
-// ── Component ─────────────────────────────────────────────────────────────────
 
 export function LoginPage() {
   const { isAuthenticated, isLoading, login } = useWallet();

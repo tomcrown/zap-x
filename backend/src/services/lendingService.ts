@@ -1,11 +1,7 @@
-/**
- * LendingService
- */
+import getDb from "../db/database.js";
+import { TokenSymbol } from "../models/types.js";
 
-import getDb from '../db/database.js';
-import { TokenSymbol } from '../models/types.js';
-
-export type LendingStatus = 'active' | 'withdrawn';
+export type LendingStatus = "active" | "withdrawn";
 
 export interface DbLendingPosition {
   id: number;
@@ -24,8 +20,6 @@ export interface LendingStats {
   projectedAnnualYield: string;
 }
 
-// ─── Record Deposit ────────────────────────────────────────────────────────────
-
 export async function recordDeposit(params: {
   userWallet: string;
   token: TokenSymbol;
@@ -40,8 +34,6 @@ export async function recordDeposit(params: {
   return row;
 }
 
-// ─── Record Withdraw ───────────────────────────────────────────────────────────
-
 export async function recordWithdraw(params: {
   positionId: number;
   userWallet: string;
@@ -54,15 +46,17 @@ export async function recordWithdraw(params: {
   `;
 }
 
-// ─── Get Positions ─────────────────────────────────────────────────────────────
-
-export async function getLendingPositions(userWallet: string): Promise<DbLendingPosition[]> {
+export async function getLendingPositions(
+  userWallet: string,
+): Promise<DbLendingPosition[]> {
   return getDb()<DbLendingPosition[]>`
     SELECT * FROM lending_positions WHERE user_wallet = ${userWallet} ORDER BY created_at DESC
   `;
 }
 
-export async function getActiveLendingPositions(userWallet: string): Promise<DbLendingPosition[]> {
+export async function getActiveLendingPositions(
+  userWallet: string,
+): Promise<DbLendingPosition[]> {
   return getDb()<DbLendingPosition[]>`
     SELECT * FROM lending_positions
     WHERE user_wallet = ${userWallet} AND status = 'active'
@@ -70,9 +64,9 @@ export async function getActiveLendingPositions(userWallet: string): Promise<DbL
   `;
 }
 
-// ─── Stats ─────────────────────────────────────────────────────────────────────
-
-export async function getLendingStats(userWallet: string): Promise<LendingStats> {
+export async function getLendingStats(
+  userWallet: string,
+): Promise<LendingStats> {
   const positions = await getActiveLendingPositions(userWallet);
 
   let total = 0;

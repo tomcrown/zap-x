@@ -66,7 +66,6 @@ export function SendForm({ prefill, onSuccess }: Props) {
       setStep("confirming");
 
       if (sendPrivately && privateSupported) {
-        // ── Private transfer flow ──────────────────────────────────────────
         setPrivateStep("initializing");
         setFundTxHash(undefined);
         setPrivateError(undefined);
@@ -83,7 +82,6 @@ export function SendForm({ prefill, onSuccess }: Props) {
           (s) => {
             setPrivateStep(s);
             if (s === "transferring" && fundTxHash === undefined) {
-              // If we reached transferring without setting fundTxHash, no funding was needed
             }
           },
         );
@@ -103,7 +101,6 @@ export function SendForm({ prefill, onSuccess }: Props) {
 
         return { isPrivate: true };
       } else {
-        // ── Normal transfer flow ───────────────────────────────────────────
         const prep = await transferApi.prepare({
           senderWallet: walletAddress,
           recipient,
@@ -152,7 +149,7 @@ export function SendForm({ prefill, onSuccess }: Props) {
         txHash,
       });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["claim-links"] }); // ADD THIS
+      queryClient.invalidateQueries({ queryKey: ["claim-links"] });
 
       onSuccess?.();
     },
@@ -162,8 +159,6 @@ export function SendForm({ prefill, onSuccess }: Props) {
       toast({ type: "error", title: "Transfer failed", message: err.message });
     },
   });
-
-  // ── Done state ───────────────────────────────────────────────────────────────
 
   if (step === "done") {
     return (
@@ -239,8 +234,6 @@ export function SendForm({ prefill, onSuccess }: Props) {
     );
   }
 
-  // ── Confirming state (private) ───────────────────────────────────────────────
-
   if (step === "confirming" && sendPrivately) {
     return (
       <div className="animate-fade-in">
@@ -254,8 +247,6 @@ export function SendForm({ prefill, onSuccess }: Props) {
       </div>
     );
   }
-
-  // ── Form ─────────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-5">

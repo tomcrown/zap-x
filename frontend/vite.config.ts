@@ -12,7 +12,6 @@ export default defineConfig({
     }),
   ],
   define: {
-    // Suppress Lit dev-mode warning (comes from @coinbase/wallet-sdk dep)
     "globalThis.litIsDevMode": false,
   },
   resolve: {
@@ -27,13 +26,12 @@ export default defineConfig({
         target: "http://localhost:3001",
         changeOrigin: true,
       },
-      // Proxy Starknet RPC calls through the dev server to avoid CORS
       "/starknet-rpc": {
         target: "https://api.cartridge.gg",
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/starknet-rpc/, "/x/starknet/sepolia"),
+        rewrite: (path) =>
+          path.replace(/^\/starknet-rpc/, "/x/starknet/sepolia"),
       },
-      // Proxy AVNU paymaster to avoid CORS
       "/avnu-paymaster": {
         target: "https://sepolia.paymaster.avnu.fi",
         changeOrigin: true,

@@ -47,7 +47,6 @@ export function ClaimPageContent() {
     }
   };
 
-  // ── Loading ──────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-surface flex items-center justify-center">
@@ -64,7 +63,6 @@ export function ClaimPageContent() {
     );
   }
 
-  // ── Error ────────────────────────────────────────────────────────────────────
   if (error || !claim) {
     return (
       <div className="min-h-screen bg-surface flex items-center justify-center p-6">
@@ -90,7 +88,6 @@ export function ClaimPageContent() {
 
   const isExpired = new Date(claim.expiresAt) < new Date();
 
-  // ── Claimed ──────────────────────────────────────────────────────────────────
   if (claimed) {
     return (
       <div className="min-h-screen bg-surface flex items-center justify-center p-6">
@@ -135,7 +132,6 @@ export function ClaimPageContent() {
     );
   }
 
-  // ── Main claim view ──────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-surface flex flex-col items-center justify-center p-6">
       {/* Logo */}

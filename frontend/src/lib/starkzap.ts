@@ -1,13 +1,3 @@
-/**
- * Starkzap SDK Integration
- *
- * Wraps the starkzap SDK for use in the Zap-X frontend.
- * All on-chain operations (transfer, stake, unstake) are executed here.
- * The user's Privy wallet is used as the signer via PrivySigner.
- *
- * SDK Docs: https://docs.starknet.io/build/starkzap/
- */
-
 import {
   StarkZap,
   Amount,
@@ -21,7 +11,6 @@ import {
 import { CallData, uint256, RpcProvider } from "starknet";
 import type { TokenSymbol } from "../types/index.js";
 
-// Vesu pool factory & default pool — network-aware (from starkzap vesuPresets)
 const VESU_POOL_FACTORY =
   (import.meta.env.VITE_STARKNET_NETWORK ?? "sepolia") === "mainnet"
     ? "0x3760f903a37948f97302736f89ce30290e45f441559325026842b7a6fb388c0"
@@ -31,22 +20,15 @@ const VESU_DEFAULT_POOL =
     ? "0x0451fe483d5921a2919ddd81d0de6696669bccdacd859f72a4fba7656b97c3b5"
     : "0x06227c13372b8c7b7f38ad1cfe05b5cf515b4e5c596dd05fe8437ab9747b2093";
 
-// Token presets keyed by network — resolved once at module load
 const _chainId =
   (import.meta.env.VITE_STARKNET_NETWORK ?? "sepolia") === "mainnet"
     ? ChainId.MAINNET
     : ChainId.SEPOLIA;
 const _tokens = getPresets(_chainId) as Record<string, unknown>;
 
-// ─── Token Address Map (used for token object lookup in SDK) ─────────────────
-
-// The SDK exports token objects by symbol — import those at runtime
-// and fall back to address-based lookup if needed.
-
 let _sdk: StarkZap | null = null;
 let _wallet: any = null;
 
-/** Get (or create) the StarkZap SDK instance. */
 export function getStarkZap(): StarkZap {
   if (_sdk) return _sdk;
 
@@ -55,7 +37,6 @@ export function getStarkZap(): StarkZap {
       | "mainnet"
       | "sepolia",
     rpcUrl: import.meta.env.VITE_STARKNET_RPC_URL,
-    // AVNU Paymaster for gasless transactions
     paymaster:
       import.meta.env.VITE_AVNU_PAYMASTER_URL &&
       import.meta.env.VITE_AVNU_API_KEY
@@ -72,15 +53,8 @@ export function getStarkZap(): StarkZap {
 }
 
 /**
- * Connect the user's Privy-managed Starknet wallet via the Starkzap Privy strategy.
  *
- * Flow:
- *  1. Calls backend POST /api/wallet/starknet to get/create the wallet (walletId, publicKey, address).
- *  2. Uses sdk.onboard({ strategy: 'privy' }) — Starkzap derives the Starknet address from the publicKey.
- *  3. When signing is needed, Starkzap POSTs { walletId, hash } to /api/wallet/sign on our backend,
- *     which proxies to Privy's rawSign. The user never touches a private key.
- *
- * @param getAccessToken - Privy's getAccessToken() so the backend can authenticate the request.
+ * @param getAccessToken
  */
 export async function connectPrivyWallet(
   getAccessToken: () => Promise<string | null>,
@@ -91,13 +65,11 @@ export async function connectPrivyWallet(
     strategy: "privy" as any,
     accountPreset: "argentXV050" as any,
     deploy: "if_needed" as any,
-    // AVNU paymaster sponsors the account deployment — user pays no gas
     feeMode: "sponsored" as any,
     privy: {
       resolve: async () => {
         const token = await getAccessToken();
-        // Ensure the token is in sessionStorage before the API call,
-        // since the axios interceptor reads from there.
+
         if (token) sessionStorage.setItem("privy:token", token);
         const { walletApi } = await import("./api.js");
         const walletInfo = await walletApi.ensureStarknetWallet();
@@ -115,17 +87,14 @@ export async function connectPrivyWallet(
   return _wallet!;
 }
 
-/** Get the currently connected wallet (throws if not connected). */
 export function getConnectedWallet() {
   if (!_wallet) throw new Error("No Starknet wallet connected.");
   return _wallet;
 }
 
-/** Reset the SDK singleton (call when user disconnects) */
 export function resetStarkZap(): void {
   _sdk = null;
   _wallet = null;
-  // Clear Tongo session state so the next user gets fresh keys
   for (const k of Object.keys(_tongoInstances)) {
     delete _tongoInstances[k as TokenSymbol];
   }
@@ -133,20 +102,12 @@ export function resetStarkZap(): void {
   _tongoPubKeyRegistered = false;
 }
 
-// ─── Token Helper ─────────────────────────────────────────────────────────────
-
-/**
- * Get the starkzap token object from a symbol string.
- * The SDK exports token constants: STRK, ETH, USDC, USDT, wBTC, etc.
- */
 export function getToken(symbol: TokenSymbol) {
   const token = _tokens[symbol];
   if (!token)
     throw new Error(`Token ${symbol} is not supported by the Starkzap SDK.`);
   return token;
 }
-
-// ─── Transfer ─────────────────────────────────────────────────────────────────
 
 export interface TransferParams {
   toAddress: string;
@@ -155,16 +116,10 @@ export interface TransferParams {
   gasless?: boolean;
 }
 
-/**
- * Execute a token transfer using the Starkzap SDK.
- * Returns the transaction hash.
- */
 export async function executeTransfer(params: TransferParams): Promise<string> {
   const tokenObj = getToken(params.token);
   const wallet = getConnectedWallet();
 
-  // Ensure the account is deployed before transacting.
-  // feeMode: "sponsored" deploys via AVNU paymaster if not yet on-chain.
   await wallet.ensureReady({
     deploy: "if_needed",
     feeMode: "sponsored" as any,
@@ -180,8 +135,6 @@ export async function executeTransfer(params: TransferParams): Promise<string> {
 
   return result.hash;
 }
-
-// ─── Batch Transfer (multiple recipients) ────────────────────────────────────
 
 export interface BatchTransferRecipient {
   to: string;
@@ -209,8 +162,6 @@ export async function executeBatchTransfer(
 
   return result.hash;
 }
-
-// ─── Swap ─────────────────────────────────────────────────────────────────────
 
 export interface SwapQuote {
   amountIn: string;
@@ -283,8 +234,6 @@ export async function executeSwap(
   return (result as any).hash ?? (result as any).transaction_hash;
 }
 
-// ─── Lending (Vesu) ──────────────────────────────────────────────────────────
-
 export interface LendingMarket {
   name: string;
   tokenSymbol: string;
@@ -301,7 +250,6 @@ export interface LendingPosition {
   healthFactor: string | null;
 }
 
-/** Try an async fn with sponsored fee, fallback to user_pays if paymaster rejects. */
 async function withFeeFallback<T>(
   fn: (opts: { feeMode: string } | undefined) => Promise<T>,
   sponsored: boolean,
@@ -311,7 +259,6 @@ async function withFeeFallback<T>(
     return await fn({ feeMode: "sponsored" as any });
   } catch (err: any) {
     const msg = err?.message ?? "";
-    // Paymaster rejected → retry with user_pays (user covers gas in STRK)
     if (
       msg.includes("paymaster") ||
       msg.includes("Paymaster") ||
@@ -348,10 +295,6 @@ export async function executeLendingDeposit(
   return (result as any).hash ?? (result as any).transaction_hash;
 }
 
-/**
- * Direct fallback: bypass `max_redeem` (which returns 0 on Sepolia due to stale oracles)
- * and instead call `balance_of` on the vToken, then `redeem(shares, receiver, owner)`.
- */
 async function redeemAllVesuSharesDirect(
   tokenAddress: string,
   wallet: any,
@@ -361,7 +304,6 @@ async function redeemAllVesuSharesDirect(
   const rpc = import.meta.env.VITE_STARKNET_RPC_URL as string | undefined;
   const provider = new RpcProvider({ nodeUrl: rpc });
 
-  // Resolve vToken address from pool factory
   const vTokenRes = await provider.callContract({
     contractAddress: VESU_POOL_FACTORY,
     entrypoint: "v_token_for_asset",
@@ -372,7 +314,6 @@ async function redeemAllVesuSharesDirect(
     throw new Error("No Vesu pool found for this token");
   }
 
-  // Read actual share balance (balance_of, not max_redeem which has oracle dependency)
   const balRes = await provider.callContract({
     contractAddress: vTokenAddress,
     entrypoint: "balance_of",
@@ -387,7 +328,6 @@ async function redeemAllVesuSharesDirect(
     );
   }
 
-  // Execute redeem(shares, receiver, owner) directly on the vToken contract
   const result = await withFeeFallback(
     (opts) =>
       (wallet as any).execute(
@@ -423,15 +363,12 @@ export async function executeLendingWithdraw(
 
   const lending = wallet.lending();
   try {
-    // Standard path: withdrawMax uses max_redeem → redeem
     const result = await withFeeFallback(
       (opts) => lending.withdrawMax({ token: tokenObj as any }, opts as any),
       !!gasless,
     );
     return (result as any).hash ?? (result as any).transaction_hash;
   } catch (err: any) {
-    // max_redeem returns 0 on Sepolia when oracle is stale — fall back to
-    // directly reading balance_of and calling redeem on the vToken
     if (err.message?.includes("No withdrawable Vesu shares")) {
       return redeemAllVesuSharesDirect(
         (tokenObj as any).address,
@@ -483,22 +420,14 @@ export async function getLendingPosition(
   }
 }
 
-// ─── Staking ──────────────────────────────────────────────────────────────────
-
-/**
- * Stake tokens into a pool.
- * Equivalent to wallet.stake(poolAddress, amount) in the SDK.
- * The SDK auto-detects whether to use enterPool or addToPool.
- */
 export async function executeStake(
   poolAddress: string,
   amount: string,
   token: TokenSymbol,
   gasless?: boolean,
 ): Promise<string> {
-  // Sepolia delegation pools are not deployed by validators — simulate staking on testnet
   if (_chainId === ChainId.SEPOLIA) {
-    await new Promise((r) => setTimeout(r, 1200)); // brief delay to feel realistic
+    await new Promise((r) => setTimeout(r, 1200));
     return "0x" + Math.random().toString(16).slice(2).padEnd(63, "0");
   }
 
@@ -521,10 +450,6 @@ export async function executeStake(
   return result.hash;
 }
 
-/**
- * Declare exit intent — first step of unstaking (starts cooldown).
- * Maps to wallet.exitPoolIntent(poolAddress, amount).
- */
 export async function executeExitIntent(
   poolAddress: string,
   amount: string,
@@ -542,10 +467,6 @@ export async function executeExitIntent(
   return result.hash;
 }
 
-/**
- * Complete the exit — second step, callable after cooldown window.
- * Maps to wallet.exitPool(poolAddress).
- */
 export async function executeExit(poolAddress: string): Promise<string> {
   if (_chainId === ChainId.SEPOLIA) {
     await new Promise((r) => setTimeout(r, 1200));
@@ -556,14 +477,12 @@ export async function executeExit(poolAddress: string): Promise<string> {
   return result.hash;
 }
 
-// ─── Balance Query ────────────────────────────────────────────────────────────
-
 export async function getBalance(token: TokenSymbol): Promise<string> {
   const tokenObj = getToken(token);
   const wallet = getConnectedWallet();
 
   const balance = await wallet.balanceOf(tokenObj as any);
-  return balance.toUnit(); // human-readable string
+  return balance.toUnit();
 }
 
 export async function getAllBalances(): Promise<Record<TokenSymbol, string>> {
@@ -577,8 +496,6 @@ export async function getAllBalances(): Promise<Record<TokenSymbol, string>> {
   });
   return out as Record<TokenSymbol, string>;
 }
-
-// ─── Pool Position ────────────────────────────────────────────────────────────
 
 export interface PoolPosition {
   staked: string;
@@ -602,20 +519,14 @@ export async function getPoolPosition(
   };
 }
 
-// ─── Bridge (Ethereum → Starknet) ────────────────────────────────────────────
-
 export interface BridgeTokenInfo {
   symbol: string;
   name: string;
   decimals: number;
   protocol: string;
-  raw: any; // full BridgeToken object passed back to deposit()
+  raw: any;
 }
 
-/**
- * Fetch available Ethereum → Starknet bridge tokens for the current network.
- * Requires ethers to be installed (it is — checked node_modules).
- */
 export async function getBridgeTokens(): Promise<BridgeTokenInfo[]> {
   const sdk = getStarkZap();
   const tokens = await sdk.getBridgingTokens(ExternalChain.ETHEREUM);
@@ -628,11 +539,6 @@ export async function getBridgeTokens(): Promise<BridgeTokenInfo[]> {
   }));
 }
 
-/**
- * Connect to the user's MetaMask (EIP-1193) Ethereum wallet.
- * Auto-switches MetaMask to the correct Ethereum network (Sepolia for testnet, Mainnet for mainnet).
- * Returns a ConnectedEthereumWallet the SDK can use for bridging.
- */
 export async function connectEthereumWallet(): Promise<any> {
   const provider = (window as any).ethereum;
   if (!provider)
@@ -640,19 +546,16 @@ export async function connectEthereumWallet(): Promise<any> {
       "MetaMask not found. Install MetaMask to bridge from Ethereum.",
     );
 
-  // Request account access — opens MetaMask if not already connected
   const accounts: string[] = await provider.request({
     method: "eth_requestAccounts",
   });
   if (!accounts.length)
     throw new Error("No Ethereum account found in MetaMask.");
 
-  // Determine which Ethereum network we need based on Starknet network
   const isSepolia = _chainId !== ChainId.MAINNET;
-  const requiredChainId = isSepolia ? 11155111 : 1; // Ethereum Sepolia or Mainnet
+  const requiredChainId = isSepolia ? 11155111 : 1;
   const requiredChainHex = "0x" + requiredChainId.toString(16);
 
-  // Check current chain
   const currentChainHex: string = await provider.request({
     method: "eth_chainId",
   });
@@ -660,13 +563,11 @@ export async function connectEthereumWallet(): Promise<any> {
 
   if (currentChainId !== requiredChainId) {
     try {
-      // Ask MetaMask to switch to the required network
       await provider.request({
         method: "wallet_switchEthereumChain",
         params: [{ chainId: requiredChainHex }],
       });
     } catch (switchErr: any) {
-      // Chain not added in MetaMask (error 4902) — add Sepolia automatically
       if (switchErr.code === 4902 && isSepolia) {
         await provider.request({
           method: "wallet_addEthereumChain",
@@ -707,11 +608,11 @@ export async function connectEthereumWallet(): Promise<any> {
 
 /**
  * Execute a bridge deposit from Ethereum to Starknet.
- * @param bridgeToken  - raw BridgeToken from getBridgeTokens()
- * @param amount       - human-readable amount string e.g. "10"
- * @param recipient    - Starknet wallet address to receive funds
- * @param ethWallet    - ConnectedEthereumWallet from connectEthereumWallet()
- * @returns Ethereum transaction hash
+ * @param bridgeToken
+ * @param amount
+ * @param recipient
+ * @param ethWallet
+ * @returns
  */
 export async function executeBridge(
   bridgeToken: any,
@@ -720,9 +621,7 @@ export async function executeBridge(
   ethWallet: any,
 ): Promise<string> {
   const wallet = getConnectedWallet();
-  // bridgeToken.raw is the actual BridgeToken object from the SDK
   const rawToken = bridgeToken.raw ?? bridgeToken;
-  // Use the token's decimals for Amount.parse (ETH=18, USDC=6, etc.)
   const decimals: number = rawToken.decimals ?? bridgeToken.decimals;
   const symbol: string = rawToken.symbol ?? bridgeToken.symbol;
   const parsedAmount = Amount.parse(amount, decimals, symbol);
@@ -730,20 +629,14 @@ export async function executeBridge(
   return (tx as any).hash ?? (tx as any).transactionHash ?? String(tx);
 }
 
-// ─── DCA ─────────────────────────────────────────────────────────────────────
-
 export interface DcaCreateParams {
   sellToken: TokenSymbol;
   buyToken: TokenSymbol;
-  amountPerCycle: string; // human-readable e.g. "10"
-  frequency: string; // ISO 8601: "P1D", "P7D", "P1M"
-  cycles?: number; // total cycles (optional)
+  amountPerCycle: string;
+  frequency: string;
+  cycles?: number;
 }
 
-/**
- * Create a DCA order on AVNU. Sells `sellToken` to buy `buyToken` on schedule.
- * Returns { txHash, orderAddress? }
- */
 export async function executeDcaCreate(
   params: DcaCreateParams,
 ): Promise<{ txHash: string; orderAddress?: string }> {
@@ -760,7 +653,6 @@ export async function executeDcaCreate(
     params.amountPerCycle,
     sellTokenObj as any,
   );
-  // totalAmount = amountPerCycle * cycles (or 100 cycles if unspecified)
   const cycles = params.cycles ?? 100;
   const totalBase = amountPerCycle.toBase() * BigInt(cycles);
   const totalAmount = Amount.fromRaw(totalBase, sellTokenObj as any);
@@ -781,8 +673,6 @@ export async function executeDcaCreate(
   const txHash: string =
     (result as any).transaction_hash ?? (result as any).hash;
 
-  // Poll getOrders after tx submission to get the on-chain orderAddress.
-  // AVNU assigns it after the tx is accepted — retry up to 10s.
   let orderAddress: string | undefined;
   for (let i = 0; i < 5; i++) {
     await new Promise((r) => setTimeout(r, 2000));
@@ -798,15 +688,12 @@ export async function executeDcaCreate(
         orderAddress = String(match.orderAddress);
         break;
       }
-    } catch {
-      /* keep retrying */
-    }
+    } catch {}
   }
 
   return { txHash, orderAddress };
 }
 
-/** List active DCA orders from AVNU for the current wallet. */
 export async function getDcaOrders(): Promise<any[]> {
   if (!_wallet) return [];
   const wallet = getConnectedWallet();
@@ -818,7 +705,6 @@ export async function getDcaOrders(): Promise<any[]> {
   }
 }
 
-/** Cancel a DCA order by its on-chain orderAddress. */
 export async function executeDcaCancel(orderAddress: string): Promise<string> {
   const wallet = getConnectedWallet();
   const result = await withFeeFallback(
@@ -828,12 +714,6 @@ export async function executeDcaCancel(orderAddress: string): Promise<string> {
   return (result as any).transaction_hash ?? (result as any).hash;
 }
 
-// ─── Borrow / Repay (Vesu) ───────────────────────────────────────────────────
-
-/**
- * Get the maximum borrowable amount for a given collateral/debt pair.
- * Returns human-readable string, or "0" if unavailable.
- */
 export async function getBorrowLimit(
   collateralToken: TokenSymbol,
   debtToken: TokenSymbol,
@@ -913,17 +793,12 @@ export async function executeRepay(
   return (result as any).hash ?? (result as any).transaction_hash;
 }
 
-// ─── Claim Staking Rewards ────────────────────────────────────────────────────
-
 export async function claimPoolRewards(poolAddress: string): Promise<string> {
   const wallet = getConnectedWallet();
   const result = await wallet.claimPoolRewards(poolAddress);
   return result.hash;
 }
 
-// ─── Private Transfers (Tongo Confidential) ───────────────────────────────────
-
-/** Tongo contract addresses per token per network. Each token has its own Tongo vault. */
 const TONGO_CONTRACTS: Partial<Record<TokenSymbol, string>> =
   _chainId === ChainId.MAINNET
     ? {
@@ -937,36 +812,25 @@ const TONGO_CONTRACTS: Partial<Record<TokenSymbol, string>> =
         USDC: "0x2caae365e67921979a4e5c16dd70eaa5776cfc6a9592bcb903d91933aaf2552",
       };
 
-/** Token symbols that support private (confidential) transfers. */
 export const PRIVATE_TRANSFER_TOKENS: TokenSymbol[] = ["STRK", "ETH", "USDC"];
 
 export function isPrivateTransferSupported(token: TokenSymbol): boolean {
   return token in TONGO_CONTRACTS;
 }
 
-// One TongoConfidential instance per token (same private key, different contract per token).
 const _tongoInstances: Partial<Record<TokenSymbol, TongoConfidential>> = {};
-// Cached private key for the session — fetched once from backend, kept in memory.
 let _tongoPrivateKey: string | null = null;
-// Track whether the public key has been registered on the backend this session.
 let _tongoPubKeyRegistered = false;
 
-/** Fetch and cache the Tongo private key from the backend. */
 async function fetchTongoPrivateKey(): Promise<string> {
   if (_tongoPrivateKey) return _tongoPrivateKey;
   const { walletApi } = await import("./api.js");
   const result = await walletApi.getTongoKey();
   _tongoPrivateKey = result.privateKey;
-  // If the public key is already stored, mark as registered so we skip the round-trip.
   if (result.publicKeyX && result.publicKeyY) _tongoPubKeyRegistered = true;
   return _tongoPrivateKey;
 }
 
-/**
- * Get (or lazily create) the TongoConfidential instance for a given token.
- * On first call per token, fetches the private key from the backend, creates
- * the instance, and registers the derived public key on the backend.
- */
 export async function getOrInitTongoConfidential(
   token: TokenSymbol,
 ): Promise<TongoConfidential> {
@@ -989,14 +853,13 @@ export async function getOrInitTongoConfidential(
   });
   _tongoInstances[token] = instance;
 
-  // Register public key once per session (fire-and-forget — non-blocking).
   if (!_tongoPubKeyRegistered) {
     _tongoPubKeyRegistered = true;
     const { x, y } = instance.recipientId;
     const { walletApi } = await import("./api.js");
-    walletApi
-      .saveTongoPublicKey(String(x), String(y))
-      .catch(() => { _tongoPubKeyRegistered = false; }); // retry allowed on next init
+    walletApi.saveTongoPublicKey(String(x), String(y)).catch(() => {
+      _tongoPubKeyRegistered = false;
+    });
   }
 
   return instance;
@@ -1026,21 +889,12 @@ export interface PrivateTransferResult {
  * @param params.gasless        Whether to use AVNU paymaster
  * @param onProgress            Optional callback for step-level UI updates
  */
-/**
- * Send a Tongo tx, trying sponsored gas first then falling back to user_pays.
- * Takes a factory function so the builder is re-created on retry (builders
- * may not be reusable after a failed .send() call).
- */
-async function sendTongoTx(
-  buildTx: () => any,
-  gasless: boolean,
-): Promise<any> {
+
+async function sendTongoTx(buildTx: () => any, gasless: boolean): Promise<any> {
   if (!gasless) return buildTx().send();
   try {
     return await buildTx().send({ feeMode: "sponsored" as any });
   } catch (err: any) {
-    // Paymaster doesn't support confidential tx types — fall back to user paying gas.
-    // Always retry with user_pays so the transfer isn't blocked by paymaster support.
     return buildTx().send({ feeMode: "user_pays" as any });
   }
 }
@@ -1057,22 +911,18 @@ export async function executePrivateTransfer(
   const tokenObj = getToken(params.token);
   const wallet = getConnectedWallet();
 
-  await wallet.ensureReady({ deploy: "if_needed", feeMode: "sponsored" as any });
+  await wallet.ensureReady({
+    deploy: "if_needed",
+    feeMode: "sponsored" as any,
+  });
 
   onProgress?.("initializing");
   const confidential = await getOrInitTongoConfidential(params.token);
 
-  // parsedAmount is in ERC20 base units (e.g. 10^18 for 1 STRK).
-  // Tongo operates in its own compressed unit space (max 2^32).
-  // The SDK's confidentialFund/Transfer expect Amount.fromRaw(tongoUnits, token),
-  // so we must convert first. Using parsedAmount directly causes a unit mismatch
-  // where the balance check (tongo units) always fails against ERC20 base units.
   const parsedAmount = Amount.parse(params.amount, tokenObj as any);
   const neededUnits = await confidential.toConfidentialUnits(parsedAmount);
-  // Amount whose .toBase() returns tongo units (what the SDK actually wants)
   const tongoAmount = Amount.fromRaw(neededUnits, tokenObj as any);
 
-  // Compare current confidential balance against what we need.
   const state = await confidential.getState();
 
   let fundTxHash: string | undefined;
@@ -1080,7 +930,6 @@ export async function executePrivateTransfer(
   if (state.balance < neededUnits) {
     onProgress?.("funding");
 
-    // Verify the user has enough public balance before attempting on-chain fund.
     const publicBalance = await wallet.balanceOf(tokenObj as any);
     if (publicBalance.toBase() < parsedAmount.toBase()) {
       throw new Error(
@@ -1088,17 +937,16 @@ export async function executePrivateTransfer(
       );
     }
 
-    // Deposit the required amount from the public wallet into the Tongo contract.
-    // Pass tongoAmount (not parsedAmount) — the SDK multiplies by the on-chain rate
-    // to compute the ERC20 approval, so the base value must be in tongo units.
     const fundResult = await sendTongoTx(
-      () => wallet.tx().confidentialFund(confidential, { amount: tongoAmount, sender: wallet.address }),
+      () =>
+        wallet.tx().confidentialFund(confidential, {
+          amount: tongoAmount,
+          sender: wallet.address,
+        }),
       params.gasless ?? false,
     );
     fundTxHash = (fundResult as any).hash;
 
-    // Wait for the fund tx to be reflected in the on-chain Tongo state before
-    // building the ZK transfer proof (proof is tied to the current ciphertext).
     let stateAfterFund = state;
     for (let i = 0; i < 15; i++) {
       await new Promise((r) => setTimeout(r, 3000));
@@ -1116,14 +964,15 @@ export async function executePrivateTransfer(
   onProgress?.("transferring");
 
   const transferResult = await sendTongoTx(
-    () => wallet.tx().confidentialTransfer(confidential, {
-      amount: tongoAmount,  // tongo units, not ERC20 base
-      to: {
-        x: BigInt(params.recipientKey.x),
-        y: BigInt(params.recipientKey.y),
-      },
-      sender: wallet.address,
-    }),
+    () =>
+      wallet.tx().confidentialTransfer(confidential, {
+        amount: tongoAmount,
+        to: {
+          x: BigInt(params.recipientKey.x),
+          y: BigInt(params.recipientKey.y),
+        },
+        sender: wallet.address,
+      }),
     params.gasless ?? false,
   );
 
@@ -1133,10 +982,6 @@ export async function executePrivateTransfer(
   };
 }
 
-/**
- * Get the user's current confidential balance for a token.
- * Returns human-readable strings for active (spendable) and pending (needs rollover) balances.
- */
 export async function getTongoBalance(
   token: TokenSymbol,
 ): Promise<{ active: string; pending: string }> {
@@ -1153,12 +998,6 @@ export async function getTongoBalance(
   };
 }
 
-// ─── Batch Operations (TxBuilder) ────────────────────────────────────────────
-
-/**
- * Execute a send + stake in a single batched transaction (one signature).
- * Uses TxBuilder from the Starkzap SDK.
- */
 export async function executeSendAndStake(params: {
   toAddress: string;
   sendAmount: string;

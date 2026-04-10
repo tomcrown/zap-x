@@ -1,8 +1,3 @@
-/**
- * API client — thin wrapper around axios with auth header injection.
- * All requests go to the Zap-X backend via the /api prefix.
- */
-
 import axios, { AxiosError } from "axios";
 import {
   Transaction,
@@ -21,21 +16,17 @@ import {
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "/api";
 
-// ─── Axios Instance ────────────────────────────────────────────────────────────
-
 export const apiClient = axios.create({
   baseURL: BASE_URL,
   timeout: 30_000,
   headers: { "Content-Type": "application/json" },
 });
 
-// Allow WalletContext to register Privy's getAccessToken so we always get a fresh JWT
 let _tokenGetter: (() => Promise<string | null>) | null = null;
 export function registerTokenGetter(fn: () => Promise<string | null>) {
   _tokenGetter = fn;
 }
 
-// Inject Privy auth token — call fresh getter each time to avoid expired JWTs
 apiClient.interceptors.request.use(async (reqConfig) => {
   const token = _tokenGetter
     ? await _tokenGetter().catch(() => sessionStorage.getItem("privy:token"))
@@ -45,7 +36,6 @@ apiClient.interceptors.request.use(async (reqConfig) => {
   return reqConfig;
 });
 
-// Normalise errors
 apiClient.interceptors.response.use(
   (r) => r,
   (err: AxiosError<{ error: string }>) => {
@@ -54,10 +44,7 @@ apiClient.interceptors.response.use(
   },
 );
 
-// ─── Wallet ────────────────────────────────────────────────────────────────────
-
 export const walletApi = {
-  /** Get or create the user's Privy-managed Starknet wallet. Returns { walletId, publicKey, address }. */
   ensureStarknetWallet: () =>
     apiClient
       .post<{
@@ -67,29 +54,26 @@ export const walletApi = {
       }>("/wallet/starknet")
       .then((r) => r.data),
 
-  /** Sign endpoint URL — must be an absolute URL for Starkzap's PrivySigner validation. */
   get signUrl() {
     const backendUrl =
       import.meta.env.VITE_BACKEND_URL ?? "http://localhost:3001";
     return `${backendUrl}/api/wallet/sign`;
   },
 
-  /** Get (or generate) the user's Tongo private key for confidential transfers. */
   getTongoKey: () =>
     apiClient
-      .post<{ privateKey: string; publicKeyX: string | null; publicKeyY: string | null }>(
-        "/wallet/tongo",
-      )
+      .post<{
+        privateKey: string;
+        publicKeyX: string | null;
+        publicKeyY: string | null;
+      }>("/wallet/tongo")
       .then((r) => r.data),
 
-  /** Register the Tongo public key derived on the frontend. */
   saveTongoPublicKey: (x: string, y: string) =>
     apiClient
       .post<{ success: boolean }>("/wallet/tongo/pubkey", { x, y })
       .then((r) => r.data),
 };
-
-// ─── User ──────────────────────────────────────────────────────────────────────
 
 export const userApi = {
   register: (body: {
@@ -115,8 +99,6 @@ export const userApi = {
       }>(`/users/lookup/${encodeURIComponent(identifier)}`)
       .then((r) => r.data),
 };
-
-// ─── Transfer ─────────────────────────────────────────────────────────────────
 
 export interface PrepareTransferResult {
   toAddress: string;
@@ -163,18 +145,17 @@ export const transferApi = {
       .then((r) => r.data.transactions),
 };
 
-// ─── Private (Confidential) Transfer ──────────────────────────────────────────
-
 export const privateTransferApi = {
-  /** Resolve recipient Tongo public key. Errors if recipient hasn't activated private transfers. */
   prepare: (recipient: string) =>
     apiClient
-      .post<{ recipientKey: { x: string; y: string } }>("/transfer/private/prepare", {
-        recipient,
-      })
+      .post<{ recipientKey: { x: string; y: string } }>(
+        "/transfer/private/prepare",
+        {
+          recipient,
+        },
+      )
       .then((r) => r.data),
 
-  /** Record the confidential transfer in the DB after on-chain execution. */
   confirm: (body: {
     senderWallet: string;
     recipient: string;
@@ -185,14 +166,13 @@ export const privateTransferApi = {
     note?: string;
   }) =>
     apiClient
-      .post<{ success: boolean; txHash: string; message: string }>(
-        "/transfer/private/confirm",
-        body,
-      )
+      .post<{
+        success: boolean;
+        txHash: string;
+        message: string;
+      }>("/transfer/private/confirm", body)
       .then((r) => r.data),
 };
-
-// ─── Claim ────────────────────────────────────────────────────────────────────
 
 export const claimApi = {
   get: (token: string) =>
@@ -216,8 +196,6 @@ export const claimApi = {
       .post<{ success: boolean; txHash: string }>(`/claim/${token}/cancel`, {})
       .then((r) => r.data),
 };
-
-// ─── Staking ──────────────────────────────────────────────────────────────────
 
 export const stakingApi = {
   pools: () =>
@@ -255,14 +233,10 @@ export const stakingApi = {
     apiClient.post("/staking/exit", { positionId, txHash }).then((r) => r.data),
 };
 
-// ─── Chat ─────────────────────────────────────────────────────────────────────
-
-/** A single item in the unified activity feed returned by GET /chat (history intent). */
 export interface ActivityItem {
   kind: "send" | "receive" | "swap" | "dca" | "save" | "withdraw" | "bridge";
   token: string;
   amount: string;
-  /** Recipient identifier, toToken, fromChain, etc. — depends on kind. */
   label: string;
   status: string;
   tx_hash: string | null;
@@ -295,8 +269,6 @@ export const chatApi = {
       .then((r) => r.data),
 };
 
-// ─── Lending ──────────────────────────────────────────────────────────────────
-
 export const lendingApi = {
   stats: () =>
     apiClient
@@ -322,8 +294,6 @@ export const lendingApi = {
     apiClient.post("/lending/void", { positionIds }).then((r) => r.data),
 };
 
-// ─── Swap ─────────────────────────────────────────────────────────────────────
-
 export const swapApi = {
   history: () =>
     apiClient
@@ -342,8 +312,6 @@ export const swapApi = {
       .post<{ swap: SwapRecord }>("/swap/record", body)
       .then((r) => r.data.swap),
 };
-
-// ─── DCA ──────────────────────────────────────────────────────────────────────
 
 export const dcaApi = {
   orders: () =>
@@ -365,10 +333,10 @@ export const dcaApi = {
     apiClient.post("/dca/cancel", { orderAddress, txHash }).then((r) => r.data),
 
   patchAddress: (txHash: string, orderAddress: string) =>
-    apiClient.post("/dca/patch-address", { txHash, orderAddress }).then((r) => r.data),
+    apiClient
+      .post("/dca/patch-address", { txHash, orderAddress })
+      .then((r) => r.data),
 };
-
-// ─── Bridge ───────────────────────────────────────────────────────────────────
 
 export const bridgeApi = {
   history: () =>
@@ -386,8 +354,6 @@ export const bridgeApi = {
       .post<{ success: boolean; record: any }>("/bridge/record", body)
       .then((r) => r.data),
 };
-
-// ─── AI ───────────────────────────────────────────────────────────────────────
 
 export const aiApi = {
   parse: (command: string) =>

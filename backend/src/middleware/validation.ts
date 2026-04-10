@@ -1,30 +1,37 @@
-import { Request, Response, NextFunction } from 'express';
-import { z, ZodSchema } from 'zod';
-import { TokenSymbol } from '../models/types.js';
+import { Request, Response, NextFunction } from "express";
+import { z, ZodSchema } from "zod";
+import { TokenSymbol } from "../models/types.js";
 
-const TOKEN_SYMBOLS: [TokenSymbol, ...TokenSymbol[]] = ['STRK', 'ETH', 'USDC', 'USDT', 'wBTC', 'lBTC', 'tBTC'];
-
-// ─── Shared Zod Schemas ────────────────────────────────────────────────────────
+const TOKEN_SYMBOLS: [TokenSymbol, ...TokenSymbol[]] = [
+  "STRK",
+  "ETH",
+  "USDC",
+  "USDT",
+  "wBTC",
+  "lBTC",
+  "tBTC",
+];
 
 export const amountSchema = z
   .string()
-  .regex(/^\d+(\.\d+)?$/, 'Amount must be a positive decimal number')
-  .refine((v) => parseFloat(v) > 0, 'Amount must be greater than 0');
+  .regex(/^\d+(\.\d+)?$/, "Amount must be a positive decimal number")
+  .refine((v) => parseFloat(v) > 0, "Amount must be greater than 0");
 
 export const tokenSchema = z.enum(TOKEN_SYMBOLS);
 
 export const starknetAddressSchema = z
   .string()
-  .regex(/^0x[0-9a-fA-F]{1,64}$/, 'Invalid Starknet address format');
-
-// ─── Request schemas ───────────────────────────────────────────────────────────
+  .regex(/^0x[0-9a-fA-F]{1,64}$/, "Invalid Starknet address format");
 
 export const registerUserSchema = z.object({
   username: z
     .string()
     .min(3)
     .max(30)
-    .regex(/^[a-z0-9_]+$/, 'Username must be lowercase alphanumeric with underscores')
+    .regex(
+      /^[a-z0-9_]+$/,
+      "Username must be lowercase alphanumeric with underscores",
+    )
     .optional(),
   email: z.string().email().optional(),
   walletAddress: starknetAddressSchema,
@@ -77,19 +84,23 @@ export const privateTransferConfirmSchema = z.object({
   amount: amountSchema,
   token: tokenSchema,
   transferTxHash: z.string().regex(/^0x[0-9a-fA-F]+$/),
-  fundTxHash: z.string().regex(/^0x[0-9a-fA-F]+$/).optional(),
+  fundTxHash: z
+    .string()
+    .regex(/^0x[0-9a-fA-F]+$/)
+    .optional(),
   note: z.string().max(200).optional(),
 });
-
-// ─── Middleware factory ────────────────────────────────────────────────────────
 
 export function validate<T>(schema: ZodSchema<T>) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const result = schema.safeParse(req.body);
     if (!result.success) {
       res.status(400).json({
-        error: 'Validation failed',
-        details: result.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+        error: "Validation failed",
+        details: result.error.issues.map((i) => ({
+          path: i.path.join("."),
+          message: i.message,
+        })),
       });
       return;
     }

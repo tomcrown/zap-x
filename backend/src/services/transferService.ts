@@ -1,7 +1,3 @@
-/**
- * TransferService
- */
-
 import { config } from "../config/index.js";
 import getDb from "../db/database.js";
 import {
@@ -25,8 +21,6 @@ import {
 } from "./walletService.js";
 import { createClaimLink } from "./claimService.js";
 import { sendClaimEmail, sendTransferConfirmation } from "./emailService.js";
-
-// ─── Resolve recipient ─────────────────────────────────────────────────────────
 
 interface ResolutionResult {
   recipientAddress: string | null;
@@ -57,7 +51,11 @@ export async function resolveRecipient(
       const email = recipient.toLowerCase().trim();
       const user = await lookupByEmail(email);
       if (user) {
-        return { recipientAddress: user.walletAddress, needsEscrow: false, recipientEmail: email };
+        return {
+          recipientAddress: user.walletAddress,
+          needsEscrow: false,
+          recipientEmail: email,
+        };
       }
       return {
         recipientAddress: config.escrow.walletAddress || null,
@@ -72,8 +70,6 @@ export async function resolveRecipient(
       );
   }
 }
-
-// ─── Prepare send ──────────────────────────────────────────────────────────────
 
 export async function prepareTransfer(req: SendRequest): Promise<{
   toAddress: string;
@@ -100,8 +96,6 @@ export async function prepareTransfer(req: SendRequest): Promise<{
 
   return { toAddress: resolution.recipientAddress!, needsEscrow: false };
 }
-
-// ─── Record confirmed transfer ─────────────────────────────────────────────────
 
 export async function recordConfirmedTransfer(params: {
   senderWallet: string;
@@ -146,9 +140,9 @@ export async function recordConfirmedTransfer(params: {
     );
   }
 
-  // Send notification email to registered recipients (non-escrow).
-  // resolveRecipient now returns recipientEmail for email-type recipients even when registered.
-  const notifyEmail = !params.needsEscrow ? (params.recipientEmail ?? resolution.recipientEmail) : null;
+  const notifyEmail = !params.needsEscrow
+    ? (params.recipientEmail ?? resolution.recipientEmail)
+    : null;
   if (notifyEmail) {
     sendTransferConfirmation({
       toEmail: notifyEmail,
@@ -157,7 +151,10 @@ export async function recordConfirmedTransfer(params: {
       token: params.token,
       txHash: params.txHash,
     }).catch((err) =>
-      console.error('[EmailService] Failed to send transfer notification:', err),
+      console.error(
+        "[EmailService] Failed to send transfer notification:",
+        err,
+      ),
     );
   }
 
@@ -188,14 +185,6 @@ export async function recordConfirmedTransfer(params: {
   };
 }
 
-// ─── Private transfer (Tongo confidential) ────────────────────────────────────
-
-/**
- * Resolve the recipient of a private transfer.
- * Both sender and recipient must be registered ZAP-X users with an activated
- * Tongo account (i.e. they have opened the app at least once after this feature
- * shipped so their public key was derived and stored).
- */
 export async function resolvePrivateRecipient(recipient: string): Promise<{
   recipientAddress: string;
   recipientEmail?: string;
@@ -204,11 +193,11 @@ export async function resolvePrivateRecipient(recipient: string): Promise<{
   const type = detectRecipientType(recipient);
   let user = null;
 
-  if (type === 'address') {
+  if (type === "address") {
     user = await lookupByAddress(recipient);
-  } else if (type === 'username') {
+  } else if (type === "username") {
     user = await lookupByUsername(normaliseUsername(recipient));
-  } else if (type === 'email') {
+  } else if (type === "email") {
     user = await lookupByEmail(recipient.toLowerCase().trim());
   }
 
@@ -225,14 +214,13 @@ export async function resolvePrivateRecipient(recipient: string): Promise<{
     );
   }
 
-  return { recipientAddress: user.walletAddress, recipientEmail: user.email ?? undefined, tongoKey };
+  return {
+    recipientAddress: user.walletAddress,
+    recipientEmail: user.email ?? undefined,
+    tongoKey,
+  };
 }
 
-/**
- * Record a confirmed private (confidential) transfer in the transactions table.
- * The on-chain amount and recipient address are hidden; we store the
- * human-readable values only in our DB (visible to the sender in their history).
- */
 export async function recordPrivateTransfer(params: {
   senderWallet: string;
   recipient: string;
@@ -244,7 +232,6 @@ export async function recordPrivateTransfer(params: {
 }): Promise<{ success: boolean; txHash: string; message: string }> {
   const sql = getDb();
 
-  // Resolve recipient email for notification (best-effort — don't block the response).
   resolvePrivateRecipient(params.recipient)
     .then(({ recipientEmail }) => {
       if (!recipientEmail) return;
@@ -255,7 +242,10 @@ export async function recordPrivateTransfer(params: {
         token: params.token,
         txHash: params.transferTxHash,
       }).catch((err) =>
-        console.error('[EmailService] Failed to send private transfer notification:', err),
+        console.error(
+          "[EmailService] Failed to send private transfer notification:",
+          err,
+        ),
       );
     })
     .catch(() => null);
@@ -270,7 +260,7 @@ export async function recordPrivateTransfer(params: {
       ${params.amount},
       ${params.token},
       ${params.transferTxHash},
-      ${'pending' satisfies TransactionStatus},
+      ${"pending" satisfies TransactionStatus},
       ${params.note ?? null}
     )
   `;
@@ -282,8 +272,6 @@ export async function recordPrivateTransfer(params: {
   };
 }
 
-// ─── Update transaction status ─────────────────────────────────────────────────
-
 export async function updateTransactionStatus(
   txHash: string,
   status: TransactionStatus,
@@ -291,13 +279,11 @@ export async function updateTransactionStatus(
   await getDb()`UPDATE transactions SET status = ${status} WHERE tx_hash = ${txHash}`;
 }
 
-// ─── Transaction history ───────────────────────────────────────────────────────
-
-export async function getTransactionHistory(walletAddress: string): Promise<DbTransaction[]> {
-  // Normalize to both padded (0x07aee...) and unpadded (0x7aee...) forms
-  // so we match regardless of how the address was stored.
-  const padded = '0x' + BigInt(walletAddress).toString(16).padStart(64, '0');
-  const unpadded = '0x' + BigInt(walletAddress).toString(16);
+export async function getTransactionHistory(
+  walletAddress: string,
+): Promise<DbTransaction[]> {
+  const padded = "0x" + BigInt(walletAddress).toString(16).padStart(64, "0");
+  const unpadded = "0x" + BigInt(walletAddress).toString(16);
   return getDb()<DbTransaction[]>`
     SELECT * FROM transactions
     WHERE sender_wallet IN (${padded}, ${unpadded})

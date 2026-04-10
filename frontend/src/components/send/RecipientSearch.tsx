@@ -44,7 +44,7 @@ export function RecipientSearch({ value, onChange, onResolved }: Props) {
           setNotFound(false);
         } else {
           setResolved(null);
-          setNotFound(!isEmail); // Email not found is OK (escrow flow)
+          setNotFound(!isEmail);
           onResolved?.(null);
         }
       } catch {

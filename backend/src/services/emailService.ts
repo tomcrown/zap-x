@@ -1,28 +1,24 @@
-/**
- * EmailService
- *
- * Sends transactional emails using the Resend HTTP API.
- * No SMTP — works on Render and all other hosts.
- */
-
-import { Resend } from 'resend';
-import { config } from '../config/index.js';
-import { ClaimEmailPayload } from '../models/types.js';
+import { Resend } from "resend";
+import { config } from "../config/index.js";
+import { ClaimEmailPayload } from "../models/types.js";
 
 let _resend: Resend | null = null;
 
 function getResend(): Resend {
   if (_resend) return _resend;
-  if (!config.email.pass) throw new Error('SMTP_PASS (Resend API key) is not set.');
+  if (!config.email.pass)
+    throw new Error("SMTP_PASS (Resend API key) is not set.");
   _resend = new Resend(config.email.pass);
   return _resend;
 }
 
-// ─── Claim Email ───────────────────────────────────────────────────────────────
-
-export async function sendClaimEmail(payload: ClaimEmailPayload): Promise<void> {
-  const expireDate = new Date(payload.expiresAt).toLocaleDateString('en-US', {
-    year: 'numeric', month: 'long', day: 'numeric',
+export async function sendClaimEmail(
+  payload: ClaimEmailPayload,
+): Promise<void> {
+  const expireDate = new Date(payload.expiresAt).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
 
   const senderShort = `${payload.senderAddress.slice(0, 6)}…${payload.senderAddress.slice(-4)}`;
@@ -73,7 +69,7 @@ export async function sendClaimEmail(payload: ClaimEmailPayload): Promise<void> 
         <p class="sender-line">from <strong>${senderShort}</strong> on Starknet</p>
         <h1>You have funds waiting.</h1>
         <p>Someone sent you <strong style="color:#e4e4e7">${payload.amount} ${payload.token}</strong> on Starknet. You don't need a crypto wallet to claim — we'll create one for you automatically.</p>
-        ${payload.note ? `<div class="note">"${payload.note}"</div>` : ''}
+        ${payload.note ? `<div class="note">"${payload.note}"</div>` : ""}
         <div class="steps">
           <div class="step"><span class="step-num">01</span><span class="step-text"><strong>Click the button below</strong> — takes you to Zap-X</span></div>
           <div class="step"><span class="step-num">02</span><span class="step-text"><strong>Sign in with Google or email</strong> — no crypto knowledge needed</span></div>
@@ -102,10 +98,10 @@ export async function sendClaimEmail(payload: ClaimEmailPayload): Promise<void> 
 
   if (error) throw new Error(`Resend error: ${error.message}`);
 
-  console.log(`[EmailService] Claim email sent to ***${payload.recipientEmail.slice(-6)}`);
+  console.log(
+    `[EmailService] Claim email sent to ***${payload.recipientEmail.slice(-6)}`,
+  );
 }
-
-// ─── Transfer Confirmation ─────────────────────────────────────────────────────
 
 export async function sendTransferConfirmation(params: {
   toEmail: string;

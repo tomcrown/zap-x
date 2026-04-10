@@ -1,14 +1,19 @@
-import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { stakingApi } from '../lib/api.js';
-import { executeStake, executeExitIntent, executeExit, getPoolPosition } from '../lib/starkzap.js';
-import { useWallet } from '../contexts/WalletContext.js';
-import { useToast } from '../contexts/ToastContext.js';
-import { Button } from '../components/common/Button.js';
-import { LoadingSpinner } from '../components/common/LoadingSpinner.js';
-import { Modal } from '../components/common/Modal.js';
-import { config } from '../config.js';
-import type { StakingPosition } from '../types/index.js';
+import React, { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { stakingApi } from "../lib/api.js";
+import {
+  executeStake,
+  executeExitIntent,
+  executeExit,
+  getPoolPosition,
+} from "../lib/starkzap.js";
+import { useWallet } from "../contexts/WalletContext.js";
+import { useToast } from "../contexts/ToastContext.js";
+import { Button } from "../components/common/Button.js";
+import { LoadingSpinner } from "../components/common/LoadingSpinner.js";
+import { Modal } from "../components/common/Modal.js";
+import { config } from "../config.js";
+import type { StakingPosition } from "../types/index.js";
 
 export function StakePage() {
   const { walletAddress, balances } = useWallet();
@@ -16,43 +21,48 @@ export function StakePage() {
   const queryClient = useQueryClient();
 
   const [stakeModal, setStakeModal] = useState(false);
-  const [stakeAmount, setStakeAmount] = useState('');
+  const [stakeAmount, setStakeAmount] = useState("");
   const [staking, setStaking] = useState(false);
 
-  // Load pools + stats
-  const { data: pools } = useQuery({ queryKey: ['pools'], queryFn: stakingApi.pools });
+  const { data: pools } = useQuery({
+    queryKey: ["pools"],
+    queryFn: stakingApi.pools,
+  });
   const { data: stats, isLoading } = useQuery({
-    queryKey: ['staking-stats'],
+    queryKey: ["staking-stats"],
     queryFn: stakingApi.stats,
     enabled: !!walletAddress,
     refetchInterval: 60_000,
   });
 
   const selectedPool = config.strkStakingPool;
-  const availableStrk = parseFloat(balances['STRK'] ?? '0');
+  const availableStrk = parseFloat(balances["STRK"] ?? "0");
 
   const handleStake = async () => {
     if (!walletAddress || !stakeAmount || parseFloat(stakeAmount) <= 0) return;
     setStaking(true);
     try {
-      // Execute staking on-chain via Starkzap SDK
-      const txHash = await executeStake(selectedPool, stakeAmount, 'STRK', true);
+      const txHash = await executeStake(
+        selectedPool,
+        stakeAmount,
+        "STRK",
+        true,
+      );
 
-      // Record in backend
       await stakingApi.record({
         userWallet: walletAddress,
         poolAddress: selectedPool,
         amount: stakeAmount,
-        token: 'STRK',
+        token: "STRK",
         txHash,
       });
 
-      toast({ type: 'success', title: 'Staked successfully!', txHash });
+      toast({ type: "success", title: "Staked successfully!", txHash });
       setStakeModal(false);
-      setStakeAmount('');
-      queryClient.invalidateQueries({ queryKey: ['staking-stats'] });
+      setStakeAmount("");
+      queryClient.invalidateQueries({ queryKey: ["staking-stats"] });
     } catch (err: any) {
-      toast({ type: 'error', title: 'Staking failed', message: err.message });
+      toast({ type: "error", title: "Staking failed", message: err.message });
     } finally {
       setStaking(false);
     }
@@ -61,12 +71,25 @@ export function StakePage() {
   const handleExitIntent = async (position: StakingPosition) => {
     if (!walletAddress) return;
     try {
-      const txHash = await executeExitIntent(position.pool_address, position.staked_amount, 'STRK');
+      const txHash = await executeExitIntent(
+        position.pool_address,
+        position.staked_amount,
+        "STRK",
+      );
       await stakingApi.recordExitIntent(position.id, txHash);
-      toast({ type: 'info', title: 'Exit intent submitted', message: 'Cooldown period started.', txHash });
-      queryClient.invalidateQueries({ queryKey: ['staking-stats'] });
+      toast({
+        type: "info",
+        title: "Exit intent submitted",
+        message: "Cooldown period started.",
+        txHash,
+      });
+      queryClient.invalidateQueries({ queryKey: ["staking-stats"] });
     } catch (err: any) {
-      toast({ type: 'error', title: 'Exit intent failed', message: err.message });
+      toast({
+        type: "error",
+        title: "Exit intent failed",
+        message: err.message,
+      });
     }
   };
 
@@ -75,20 +98,28 @@ export function StakePage() {
     try {
       const txHash = await executeExit(position.pool_address);
       await stakingApi.recordExit(position.id, txHash);
-      toast({ type: 'success', title: 'Unstaked!', message: 'Funds returned to your wallet.', txHash });
-      queryClient.invalidateQueries({ queryKey: ['staking-stats'] });
+      toast({
+        type: "success",
+        title: "Unstaked!",
+        message: "Funds returned to your wallet.",
+        txHash,
+      });
+      queryClient.invalidateQueries({ queryKey: ["staking-stats"] });
     } catch (err: any) {
-      toast({ type: 'error', title: 'Exit failed', message: err.message });
+      toast({ type: "error", title: "Exit failed", message: err.message });
     }
   };
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
       {/* Testnet notice */}
-      {config.starknetNetwork === 'sepolia' && (
+      {config.starknetNetwork === "sepolia" && (
         <div className="p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-xs flex items-center gap-2">
           <span>⚠️</span>
-          <span><strong>Testnet mode:</strong> Staking is simulated on Sepolia — no real funds are staked. Delegation pools are only active on mainnet.</span>
+          <span>
+            <strong>Testnet mode:</strong> Staking is simulated on Sepolia — no
+            real funds are staked. Delegation pools are only active on mainnet.
+          </span>
         </div>
       )}
 
@@ -97,7 +128,8 @@ export function StakePage() {
         <div>
           <h1 className="text-2xl font-black text-white">Stake & Earn</h1>
           <p className="text-slate-500 text-sm mt-1">
-            Earn ~8.5% APY on your idle STRK — powered by Starknet staking protocol
+            Earn ~8.5% APY on your idle STRK — powered by Starknet staking
+            protocol
           </p>
         </div>
         <Button onClick={() => setStakeModal(true)} size="md">
@@ -116,7 +148,9 @@ export function StakePage() {
             <p className="text-xs text-slate-500">STRK</p>
           </div>
           <div className="card text-center">
-            <p className="text-xs text-slate-500 mb-1">Projected Annual Yield</p>
+            <p className="text-xs text-slate-500 mb-1">
+              Projected Annual Yield
+            </p>
             <p className="text-2xl font-black text-green-400 font-mono">
               {parseFloat(stats.projectedAnnualYield).toFixed(4)}
             </p>
@@ -160,22 +194,33 @@ export function StakePage() {
       <div className="card">
         <h2 className="font-bold text-white mb-4">My Positions</h2>
         {isLoading ? (
-          <div className="flex justify-center py-8"><LoadingSpinner /></div>
+          <div className="flex justify-center py-8">
+            <LoadingSpinner />
+          </div>
         ) : stats?.positions && stats.positions.length > 0 ? (
           <div className="space-y-3">
             {stats.positions.map((pos) => (
-              <div key={pos.id} className="p-4 rounded-xl bg-surface border border-surface-border">
+              <div
+                key={pos.id}
+                className="p-4 rounded-xl bg-surface border border-surface-border"
+              >
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <p className="font-semibold text-white">{pos.pool_name}</p>
-                      <span className={`badge ${pos.status === 'active' ? 'badge-active' : pos.status === 'exiting' ? 'badge-pending' : 'badge-expired'}`}>
+                      <p className="font-semibold text-white">
+                        {pos.pool_name}
+                      </p>
+                      <span
+                        className={`badge ${pos.status === "active" ? "badge-active" : pos.status === "exiting" ? "badge-pending" : "badge-expired"}`}
+                      >
                         {pos.status}
                       </span>
                     </div>
                     <p className="text-2xl font-black font-mono text-purple-400">
                       {parseFloat(pos.staked_amount).toFixed(4)}
-                      <span className="text-sm text-purple-600 ml-1">{pos.token}</span>
+                      <span className="text-sm text-purple-600 ml-1">
+                        {pos.token}
+                      </span>
                     </p>
                     <p className="text-xs text-slate-500 mt-1">
                       Staked {new Date(pos.created_at).toLocaleDateString()}
@@ -183,7 +228,7 @@ export function StakePage() {
                   </div>
 
                   <div className="flex gap-2 flex-wrap">
-                    {pos.status === 'active' && (
+                    {pos.status === "active" && (
                       <Button
                         variant="secondary"
                         size="sm"
@@ -192,7 +237,7 @@ export function StakePage() {
                         Start Unstake
                       </Button>
                     )}
-                    {pos.status === 'exiting' && (
+                    {pos.status === "exiting" && (
                       <Button
                         variant="secondary"
                         size="sm"
@@ -220,7 +265,9 @@ export function StakePage() {
           <div className="text-center py-12">
             <div className="text-5xl mb-3">📈</div>
             <p className="text-slate-500">No active positions</p>
-            <p className="text-xs text-slate-600 mt-1">Start staking to earn passive yield</p>
+            <p className="text-xs text-slate-600 mt-1">
+              Start staking to earn passive yield
+            </p>
           </div>
         )}
       </div>
@@ -235,12 +282,16 @@ export function StakePage() {
           <div className="p-4 rounded-xl bg-surface border border-surface-border">
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-400">Available</span>
-              <span className="font-mono font-bold text-white">{availableStrk.toFixed(4)} STRK</span>
+              <span className="font-mono font-bold text-white">
+                {availableStrk.toFixed(4)} STRK
+              </span>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Amount to Stake</label>
+            <label className="block text-sm font-medium text-slate-300 mb-1.5">
+              Amount to Stake
+            </label>
             <div className="relative">
               <input
                 type="number"
@@ -265,7 +316,7 @@ export function StakePage() {
               <div className="flex justify-between text-slate-400">
                 <span>Estimated annual yield</span>
                 <span className="text-green-400 font-mono">
-                  ~{(parseFloat(stakeAmount || '0') * 0.085).toFixed(4)} STRK
+                  ~{(parseFloat(stakeAmount || "0") * 0.085).toFixed(4)} STRK
                 </span>
               </div>
               <div className="flex justify-between text-slate-400">
@@ -282,7 +333,7 @@ export function StakePage() {
             className="w-full"
             size="lg"
           >
-            Stake {stakeAmount || '0'} STRK
+            Stake {stakeAmount || "0"} STRK
           </Button>
           <p className="text-xs text-slate-500 text-center">
             Unstaking requires a cooldown period as per Starknet protocol

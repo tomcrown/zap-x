@@ -34,8 +34,6 @@ const CAPABILITIES = [
   { cmd: "History", ex: "recent transactions" },
 ];
 
-// ─── Unified activity entry ────────────────────────────────────────────────────
-
 type ActivityKind = "send" | "receive" | "swap" | "lend" | "withdraw";
 
 interface ActivityEntry {
@@ -113,18 +111,16 @@ const KIND_SIGN: Record<ActivityKind, string> = {
   withdraw: "↓",
 };
 
-// ─── Claim row ─────────────────────────────────────────────────────────────────
-
 function ClaimRow({ claim }: { claim: ClaimLink }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [confirming, setConfirming] = useState(false);
-  const [cancelled, setCancelled] = useState(false); // ADD THIS
+  const [cancelled, setCancelled] = useState(false);
 
   const cancelMutation = useMutation({
     mutationFn: () => claimApi.cancel(claim.token),
     onSuccess: (result: any) => {
-      setCancelled(true); // ADD THIS
+      setCancelled(true);
       toast({
         type: "success",
         title: "Claim cancelled",
@@ -139,7 +135,7 @@ function ClaimRow({ claim }: { claim: ClaimLink }) {
     onSettled: () => setConfirming(false),
   });
 
-  const isPending = claim.status === "pending" && !cancelled; // CHANGE THIS
+  const isPending = claim.status === "pending" && !cancelled;
 
   const recipient = claim.recipientEmail ?? claim.recipientUsername ?? "—";
   const shortRecipient =
@@ -201,7 +197,6 @@ function ClaimRow({ claim }: { claim: ClaimLink }) {
     </div>
   );
 }
-// ─── DCA row ───────────────────────────────────────────────────────────────────
 
 const FREQ_LABEL: Record<string, string> = {
   P1D: "daily",
@@ -289,8 +284,6 @@ function DcaRow({ order }: { order: any }) {
   );
 }
 
-// ─── Main panel ────────────────────────────────────────────────────────────────
-
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -335,7 +328,6 @@ export function SidePanel({ isOpen, onClose }: Props) {
     refetchInterval: 60_000,
   });
 
-  // Backfill orderAddress for any DB records that are missing it
   useEffect(() => {
     const missing = (dcaOrders ?? []).filter(
       (o: any) => !o.order_address && o.status === "active",
@@ -371,7 +363,6 @@ export function SidePanel({ isOpen, onClose }: Props) {
     positions ?? [],
   );
 
-  // Show pending claims first, then most recent non-pending (max 4 total)
   const pendingClaims = (claims ?? []).filter((c) => c.status === "pending");
   const nonPendingClaims = (claims ?? [])
     .filter((c) => c.status !== "pending")

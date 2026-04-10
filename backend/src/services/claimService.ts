@@ -1,7 +1,3 @@
-/**
- * ClaimService
- */
-
 import { Account, RpcProvider, Signer, uint256, CallData } from "starknet";
 import { config } from "../config/index.js";
 import getDb from "../db/database.js";
@@ -13,8 +9,6 @@ import {
 } from "../models/types.js";
 import { generateClaimToken, isValidStarknetAddress } from "../utils/crypto.js";
 import { claimExpiry, TOKEN_ADDRESSES, parseAmount } from "../utils/helpers.js";
-
-// ─── Create Claim Link ─────────────────────────────────────────────────────────
 
 export async function createClaimLink(params: {
   senderWallet: string;
@@ -47,8 +41,6 @@ export async function createClaimLink(params: {
   return row;
 }
 
-// ─── Get Claim Link ────────────────────────────────────────────────────────────
-
 export async function getClaimLink(
   token: string,
 ): Promise<ClaimLinkDetails | null> {
@@ -72,8 +64,6 @@ export async function getClaimLinksByWallet(
   `;
   return rows.map(rowToDetails);
 }
-
-// ─── Redeem Claim Link ─────────────────────────────────────────────────────────
 
 export async function redeemClaimLink(
   token: string,
@@ -111,7 +101,6 @@ export async function redeemClaimLink(
     WHERE token = ${token}
   `;
 
-  // Record the release transaction so it appears in the recipient's activity feed
   await sql`
     INSERT INTO transactions
       (sender_wallet, recipient_wallet, recipient_identifier, amount, token, tx_hash, status, note)
@@ -127,7 +116,6 @@ export async function redeemClaimLink(
     )
   `;
 
-  // Also update the original send transaction so the sender's record shows the real recipient
   if (row.escrow_tx_hash) {
     await sql`
       UPDATE transactions
@@ -138,8 +126,6 @@ export async function redeemClaimLink(
 
   return { txHash };
 }
-
-// ─── Cancel Claim Link ─────────────────────────────────────────────────────────
 
 export async function cancelClaimLink(
   token: string,
@@ -169,8 +155,6 @@ export async function cancelClaimLink(
 
   return { txHash };
 }
-
-// ─── Internal: Release funds from escrow wallet ────────────────────────────────
 
 async function releaseEscrow(
   recipientAddress: string,
@@ -208,8 +192,6 @@ async function releaseEscrow(
   const response = await escrowAccount.execute([call]);
   return response.transaction_hash;
 }
-
-// ─── Helper ────────────────────────────────────────────────────────────────────
 
 function rowToDetails(row: DbClaimLink): ClaimLinkDetails {
   return {

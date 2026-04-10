@@ -1,12 +1,15 @@
-// ─── Domain Types ─────────────────────────────────────────────────────────────
+export type TokenSymbol =
+  | "STRK"
+  | "ETH"
+  | "USDC"
+  | "USDT"
+  | "wBTC"
+  | "lBTC"
+  | "tBTC";
 
-export type TokenSymbol = 'STRK' | 'ETH' | 'USDC' | 'USDT' | 'wBTC' | 'lBTC' | 'tBTC';
-
-export type TransactionStatus = 'pending' | 'confirmed' | 'failed';
-export type ClaimStatus = 'pending' | 'claimed' | 'expired' | 'cancelled';
-export type StakeStatus = 'active' | 'exiting' | 'withdrawn';
-
-// ─── Database Row Types ────────────────────────────────────────────────────────
+export type TransactionStatus = "pending" | "confirmed" | "failed";
+export type ClaimStatus = "pending" | "claimed" | "expired" | "cancelled";
+export type StakeStatus = "active" | "exiting" | "withdrawn";
 
 export interface DbUser {
   id: number;
@@ -27,7 +30,7 @@ export interface DbTransaction {
   id: number;
   sender_wallet: string;
   recipient_wallet: string | null;
-  recipient_identifier: string; // username, email, or address as typed
+  recipient_identifier: string;
   amount: string;
   token: TokenSymbol;
   tx_hash: string | null;
@@ -39,16 +42,16 @@ export interface DbTransaction {
 
 export interface DbClaimLink {
   id: number;
-  token: string;           // unique claim token (UUID)
+  token: string;
   sender_wallet: string;
   recipient_email: string | null;
   recipient_username: string | null;
   amount: string;
   token_type: TokenSymbol;
-  escrow_tx_hash: string | null; // tx hash of funds sent to escrow
-  claim_tx_hash: string | null;  // tx hash of funds released to recipient
+  escrow_tx_hash: string | null;
+  claim_tx_hash: string | null;
   status: ClaimStatus;
-  expires_at: string;      // ISO datetime
+  expires_at: string;
   created_at: string;
 }
 
@@ -66,11 +69,9 @@ export interface DbStakingPosition {
   updated_at: string;
 }
 
-// ─── API Request / Response Types ─────────────────────────────────────────────
-
 export interface SendRequest {
   senderWallet: string;
-  recipient: string;        // username (@user), email, or 0x address
+  recipient: string;
   amount: string;
   token: TokenSymbol;
   note?: string;
@@ -80,7 +81,7 @@ export interface SendRequest {
 export interface SendResponse {
   success: boolean;
   txHash?: string;
-  claimToken?: string;      // Set when recipient has no wallet
+  claimToken?: string;
   claimLink?: string;
   message: string;
 }
@@ -99,7 +100,7 @@ export interface ClaimLinkDetails {
 
 export interface RedeemClaimRequest {
   recipientWallet: string;
-  privyToken?: string;     // Privy auth token to verify identity
+  privyToken?: string;
 }
 
 export interface StakeRequest {
@@ -107,7 +108,7 @@ export interface StakeRequest {
   poolAddress: string;
   amount: string;
   token: TokenSymbol;
-  txHash: string;           // Frontend has already executed the stake tx
+  txHash: string;
 }
 
 export interface UserProfile {
@@ -118,33 +119,39 @@ export interface UserProfile {
   createdAt: string;
 }
 
-// ─── AI Parsing Types ──────────────────────────────────────────────────────────
-
-export type ActionType = 'send' | 'stake' | 'unstake' | 'swap' | 'save' | 'invest' | 'bridge' | 'dca' | 'borrow' | 'repay';
+export type ActionType =
+  | "send"
+  | "stake"
+  | "unstake"
+  | "swap"
+  | "save"
+  | "invest"
+  | "bridge"
+  | "dca"
+  | "borrow"
+  | "repay";
 
 export interface ParsedAction {
   type: ActionType;
   amount: string;
   token: TokenSymbol;
-  recipient?: string;          // send: username, email, or address
-  toToken?: string;            // swap / dca: target token
-  pool?: string;               // stake/unstake
+  recipient?: string;
+  toToken?: string;
+  pool?: string;
   note?: string;
-  fromChain?: string;          // bridge: "ethereum"
-  frequency?: string;          // dca: ISO 8601 duration e.g. "P1D", "P7D", "P1M"
-  collateralToken?: TokenSymbol; // borrow/repay: collateral token
-  cycles?: number;             // dca: number of cycles (optional)
-  private?: boolean;           // send: hide amount + recipient on-chain via Tongo
+  fromChain?: string;
+  frequency?: string;
+  collateralToken?: TokenSymbol;
+  cycles?: number;
+  private?: boolean;
 }
 
 export interface AIParseResult {
   actions: ParsedAction[];
   original: string;
-  confidence: number;       // 0–1
-  clarification?: string;   // If ambiguous
+  confidence: number;
+  clarification?: string;
 }
-
-// ─── DCA / Bridge Record Types ─────────────────────────────────────────────────
 
 export interface DcaRecord {
   id: number;
@@ -155,7 +162,7 @@ export interface DcaRecord {
   frequency: string;
   order_address: string | null;
   tx_hash: string;
-  status: 'active' | 'cancelled';
+  status: "active" | "cancelled";
   created_at: string;
 }
 
@@ -168,8 +175,6 @@ export interface BridgeRecord {
   tx_hash: string;
   created_at: string;
 }
-
-// ─── Email Types ───────────────────────────────────────────────────────────────
 
 export interface ClaimEmailPayload {
   recipientEmail: string;

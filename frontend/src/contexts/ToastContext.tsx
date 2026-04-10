@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback } from "react";
 
-export type ToastType = 'success' | 'error' | 'info' | 'warning';
+export type ToastType = "success" | "error" | "info" | "warning";
 
 export interface Toast {
   id: string;
@@ -13,7 +13,7 @@ export interface Toast {
 
 interface ToastContextValue {
   toasts: Toast[];
-  toast: (t: Omit<Toast, 'id'>) => void;
+  toast: (t: Omit<Toast, "id">) => void;
   dismiss: (id: string) => void;
 }
 
@@ -27,14 +27,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toast = useCallback(
-    (t: Omit<Toast, 'id'>) => {
+    (t: Omit<Toast, "id">) => {
       const id = Math.random().toString(36).slice(2);
-      // Success toasts with tx hash linger longer (user may want to click)
-      const duration = t.duration ?? (t.txHash ? 10000 : t.type === 'error' ? 7000 : 5000);
+      const duration =
+        t.duration ?? (t.txHash ? 10000 : t.type === "error" ? 7000 : 5000);
       setToasts((prev) => [...prev, { ...t, id }]);
       setTimeout(() => dismiss(id), duration);
     },
-    [dismiss]
+    [dismiss],
   );
 
   return (
@@ -46,6 +46,6 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
 export function useToast(): ToastContextValue {
   const ctx = useContext(ToastContext);
-  if (!ctx) throw new Error('useToast must be inside <ToastProvider>');
+  if (!ctx) throw new Error("useToast must be inside <ToastProvider>");
   return ctx;
 }

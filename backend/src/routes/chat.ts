@@ -1,7 +1,3 @@
-/**
- * POST /api/chat
- */
-
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth, AuthenticatedRequest } from "../middleware/auth.js";
@@ -20,8 +16,6 @@ const router = Router();
 const chatSchema = z.object({
   message: z.string().min(1).max(500),
 });
-
-// ─── Unified Activity Feed ────────────────────────────────────────────────────
 
 export interface ActivityItem {
   kind: "send" | "receive" | "swap" | "dca" | "save" | "withdraw" | "bridge";
@@ -87,8 +81,6 @@ async function getUnifiedActivity(
     .slice(0, 15);
 }
 
-// ─── Intent detection ──────────────────────────────────────────────────────────
-
 const BALANCE_RE =
   /\b(balance|portfolio|holdings|how much|what.*(have|got))\b/i;
 const HISTORY_RE =
@@ -97,8 +89,6 @@ const POSITION_RE =
   /\b(lending|position|earning|yield|supplied|deposited|lend|vesu|saving|invested)\b/i;
 const HELP_RE = /\b(what|help|can you|how|capabilities|commands)\b/i;
 const GREETING_RE = /^(hi|hello|hey|yo|sup|gm|hola)[!. ]*$/i;
-
-// ─── Action enrichment ─────────────────────────────────────────────────────────
 
 async function enrichAction(
   action: ParsedAction,
@@ -244,8 +234,6 @@ async function enrichAction(
 
   return { action, ready: true };
 }
-
-// ─── Route ─────────────────────────────────────────────────────────────────────
 
 router.post(
   "/",

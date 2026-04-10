@@ -1,17 +1,3 @@
-/**
- * AIService — Natural Language Command Parser
- *
- * Uses Google Gemini to parse free-form user commands into structured
- * blockchain actions. Examples:
- *   "Send 5 STRK to @tolu and stake 2 STRK"
- *   → [{ type: 'send', amount: '5', token: 'STRK', recipient: '@tolu' },
- *      { type: 'stake', amount: '2', token: 'STRK' }]
- *
- *   "Swap 100 USDC for STRK then send 3 STRK to alice@example.com"
- *   → [{ type: 'swap', amount: '100', token: 'USDC', toToken: 'STRK' },
- *      { type: 'send', amount: '3', token: 'STRK', recipient: 'alice@example.com' }]
- */
-
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "../config/index.js";
 import {
@@ -51,8 +37,6 @@ function getGenAI(): GoogleGenerativeAI {
   _genAI = new GoogleGenerativeAI(config.gemini.apiKey);
   return _genAI;
 }
-
-// ─── System Prompt ─────────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `
 You are the AI engine for Zap-X, a DeFi wallet on Starknet. You parse natural language commands into structured JSON actions.
@@ -96,8 +80,6 @@ Response format:
   "clarification": "optional — only include if something is ambiguous or missing"
 }
 `;
-
-// ─── Parse Command ─────────────────────────────────────────────────────────────
 
 export async function parseCommand(userInput: string): Promise<AIParseResult> {
   const trimmed = userInput.trim();
@@ -153,8 +135,6 @@ export async function parseCommand(userInput: string): Promise<AIParseResult> {
   }
 }
 
-// ─── Local Fast Parser ─────────────────────────────────────────────────────────
-
 const LOCAL_SEND_RE =
   /^(?:send|transfer|zap)\s+([\d.]+)\s*(STRK|ETH|USDC|USDT|wBTC|BTC|lBTC|tBTC)\s+(?:to\s+)?(@[\w]+|[\w._%+-]+@[\w.-]+\.[A-Z]{2,}|0x[0-9a-fA-F]+)(?:\s+(.+))?$/i;
 
@@ -182,9 +162,15 @@ const LOCAL_REPAY_RE =
 function tryLocalParse(input: string): AIParseResult | null {
   let m: RegExpMatchArray | null;
 
-  // Detect "privately" modifier before any regex (strip it for matching, flag it)
-  const isPrivate = /\bprivately\b|\bprivate\b|\bconfidentially\b|\banonymously\b/i.test(input);
-  const normalised = input.replace(/\s*\b(?:privately|private|confidentially|anonymously)\b\s*/gi, ' ').replace(/\s+/g, ' ').trim();
+  const isPrivate =
+    /\bprivately\b|\bprivate\b|\bconfidentially\b|\banonymously\b/i.test(input);
+  const normalised = input
+    .replace(
+      /\s*\b(?:privately|private|confidentially|anonymously)\b\s*/gi,
+      " ",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
 
   m = normalised.match(LOCAL_SEND_RE);
   if (m) {
@@ -232,7 +218,9 @@ function tryLocalParse(input: string): AIParseResult | null {
   m = input.match(LOCAL_UNSTAKE_RE);
   if (m) {
     return {
-      actions: [{ type: "unstake", amount: m[1] ?? "0", token: normaliseToken(m[2]) }],
+      actions: [
+        { type: "unstake", amount: m[1] ?? "0", token: normaliseToken(m[2]) },
+      ],
       original: input,
       confidence: 0.97,
     };
@@ -241,7 +229,14 @@ function tryLocalParse(input: string): AIParseResult | null {
   m = input.match(LOCAL_BRIDGE_RE);
   if (m) {
     return {
-      actions: [{ type: "bridge", amount: m[1], token: normaliseToken(m[2]), fromChain: "ethereum" }],
+      actions: [
+        {
+          type: "bridge",
+          amount: m[1],
+          token: normaliseToken(m[2]),
+          fromChain: "ethereum",
+        },
+      ],
       original: input,
       confidence: 0.97,
     };
@@ -251,13 +246,24 @@ function tryLocalParse(input: string): AIParseResult | null {
   if (m) {
     const freqRaw = m[4].toLowerCase().replace(/\s+/g, " ");
     const frequency =
-      freqRaw === "daily" || freqRaw === "every day" ? "P1D" :
-      freqRaw === "monthly" || freqRaw === "every month" ? "P1M" : "P7D";
+      freqRaw === "daily" || freqRaw === "every day"
+        ? "P1D"
+        : freqRaw === "monthly" || freqRaw === "every month"
+          ? "P1M"
+          : "P7D";
     const buyToken = m[3] ? normaliseToken(m[3]) : normaliseToken(m[2]);
-    // "buy 10 USDC every week" → sell STRK to buy USDC; token=sell, toToken=buy
-    const sellToken = buyToken === "STRK" ? "USDC" as const : "STRK" as const;
+    const sellToken =
+      buyToken === "STRK" ? ("USDC" as const) : ("STRK" as const);
     return {
-      actions: [{ type: "dca", amount: m[1], token: sellToken, toToken: buyToken, frequency }],
+      actions: [
+        {
+          type: "dca",
+          amount: m[1],
+          token: sellToken,
+          toToken: buyToken,
+          frequency,
+        },
+      ],
       original: input,
       confidence: 0.95,
     };
@@ -266,7 +272,14 @@ function tryLocalParse(input: string): AIParseResult | null {
   m = input.match(LOCAL_BORROW_RE);
   if (m) {
     return {
-      actions: [{ type: "borrow", amount: m[1], token: normaliseToken(m[2]), collateralToken: m[3] ? normaliseToken(m[3]) : "STRK" }],
+      actions: [
+        {
+          type: "borrow",
+          amount: m[1],
+          token: normaliseToken(m[2]),
+          collateralToken: m[3] ? normaliseToken(m[3]) : "STRK",
+        },
+      ],
       original: input,
       confidence: 0.97,
     };
@@ -275,7 +288,14 @@ function tryLocalParse(input: string): AIParseResult | null {
   m = input.match(LOCAL_REPAY_RE);
   if (m) {
     return {
-      actions: [{ type: "repay", amount: m[1], token: normaliseToken(m[2]), collateralToken: m[3] ? normaliseToken(m[3]) : "STRK" }],
+      actions: [
+        {
+          type: "repay",
+          amount: m[1],
+          token: normaliseToken(m[2]),
+          collateralToken: m[3] ? normaliseToken(m[3]) : "STRK",
+        },
+      ],
       original: input,
       confidence: 0.97,
     };
