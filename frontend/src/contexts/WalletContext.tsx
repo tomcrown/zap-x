@@ -127,7 +127,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, [authenticated, walletAddress, user]);
 
   const refreshBalances = useCallback(async () => {
-    if (!authenticated || !walletAddress || !isSdkReady) return;
+    if (!authenticated || !walletAddress) return;
     setBalancesLoading(true);
     try {
       const bal = await getAllBalances();
@@ -136,7 +136,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setBalancesLoading(false);
     }
-  }, [authenticated, walletAddress, isSdkReady]);
+  }, [authenticated, walletAddress]);
 
   useEffect(() => {
     if (authenticated && walletAddress) {
@@ -151,6 +151,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       refreshBalances();
 
       getOrInitTongoConfidential("STRK").catch(() => {});
+
+      // Poll balances every 30 seconds so they stay fresh without manual refresh.
+      const interval = setInterval(() => refreshBalances(), 10_000);
+      return () => clearInterval(interval);
     } else if (!authenticated) {
       setBalances({} as Record<TokenSymbol, string>);
     }
