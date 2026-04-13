@@ -487,7 +487,6 @@ export function SidePanel({ isOpen, onClose }: Props) {
             </div>
           )}
 
-          {/* Email transfers (claims) */}
           {displayClaims.length > 0 && (
             <div className="px-4 py-4 border-b border-surface-border">
               <span className="text-xs text-zinc-600 font-mono block mb-2">
@@ -501,7 +500,6 @@ export function SidePanel({ isOpen, onClose }: Props) {
             </div>
           )}
 
-          {/* DCA orders */}
           {(dcaOrders ?? []).filter((o) => o.status === "active").length >
             0 && (
             <div className="px-4 py-4 border-b border-surface-border">
@@ -519,7 +517,6 @@ export function SidePanel({ isOpen, onClose }: Props) {
             </div>
           )}
 
-          {/* Activity feed */}
           <div className="px-4 py-4 border-b border-surface-border">
             <span className="text-xs text-zinc-600 font-mono block mb-3">
               Activity
