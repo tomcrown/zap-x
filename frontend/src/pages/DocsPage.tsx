@@ -254,6 +254,10 @@ export function DocsPage() {
                     "Claim links",
                     "Unregistered recipients get an email claim link",
                   ],
+                  [
+                    "Cancel & refund",
+                    "Senders can cancel any unclaimed transfer and get an instant refund",
+                  ],
                   ["Gasless", "All fees sponsored by AVNU Paymaster"],
                   ["Swap", "Swap between supported tokens instantly"],
                   ["DCA", "Automate recurring token buys on a schedule"],
@@ -304,6 +308,24 @@ export function DocsPage() {
                   num="04"
                   title="Funds released"
                   desc="The backend releases escrow to their new wallet via a signed transfer."
+                />
+              </div>
+              <SectionTitle>Cancel & refund</SectionTitle>
+              <div className="mb-6">
+                <Step
+                  num="01"
+                  title="Sender initiates cancel"
+                  desc="Any pending transfer where the claim link hasn't been redeemed can be cancelled."
+                />
+                <Step
+                  num="02"
+                  title="Backend verifies"
+                  desc="The claim token is checked — if unclaimed, the cancel proceeds immediately."
+                />
+                <Step
+                  num="03"
+                  title="Refund released"
+                  desc="Escrow funds are returned to the sender's wallet instantly."
                 />
               </div>
 
