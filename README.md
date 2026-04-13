@@ -7,6 +7,7 @@ Send STRK to anyone by wallet address or email. For recipients without a wallet,
 Live at: [zap-x-five.vercel.app](https://zap-x-five.vercel.app)
 
 ---
+
 ## Features
 
 | Feature              | Description                                                                                     |
@@ -15,6 +16,7 @@ Live at: [zap-x-five.vercel.app](https://zap-x-five.vercel.app)
 | Send to anyone       | Send tokens to a wallet address, @username, or email address                                    |
 | Auto-create wallets  | New recipients get a Privy-managed Starknet wallet created automatically                        |
 | Claim links          | Unregistered recipients get an email with a claim link to collect funds                         |
+| Cancel & refund      | Senders can cancel any unclaimed email transfer and get a full refund instantly                 |
 | Gasless transactions | All transactions sponsored by AVNU Paymaster — zero gas cost for users                          |
 | Private transfers    | On-chain confidential transfers — amount and recipient hidden using Tongo / ElGamal + ZK proofs |
 | Swap                 | Swap between supported tokens instantly                                                         |
@@ -47,6 +49,14 @@ When a recipient doesn't have a Zap-X account:
 3. The recipient receives an email with a link: `zap-x-five.vercel.app/claim/<token>`
 4. They click the link, sign in with Privy (their email), and a wallet is auto-created
 5. The backend releases escrow funds to their new wallet via a signed transfer
+
+### Cancel & Refund
+
+If a recipient hasn't claimed their funds yet, the sender can cancel the transfer and receive a full refund instantly. This covers cases like sending to the wrong email, changing your mind, or a recipient who never claims.
+
+1. Sender initiates a cancel on any pending transfer
+2. The backend verifies the claim link has not been redeemed
+3. Escrow funds are released back to the sender's wallet
 
 ### Gasless Transactions
 
